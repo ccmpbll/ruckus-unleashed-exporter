@@ -1,4 +1,5 @@
 # ruckus-unleashed-exporter
+![Image Build Status](https://img.shields.io/github/actions/workflow/status/ccmpbll/ruckus-unleashed-exporter/docker-image.yml?branch=main) ![Docker Image Size](https://img.shields.io/docker/image-size/ccmpbll/ruckus-unleashed-exporter/latest) ![Docker Pulls](https://img.shields.io/docker/pulls/ccmpbll/ruckus-unleashed-exporter.svg) ![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
 Prometheus exporter and Loki event pusher for Ruckus Unleashed access points.
 
