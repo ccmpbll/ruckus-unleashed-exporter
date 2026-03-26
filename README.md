@@ -13,7 +13,7 @@ docker run -d \
   -p 9785:9785 \
   -e RUCKUS_HOST=10.42.11.5 \
   -e RUCKUS_PASSWORD=your_password \
-  ccampbell/ruckus-unleashed-exporter
+  ccmpbll/ruckus-unleashed-exporter
 ```
 
 ## Environment Variables
@@ -39,7 +39,7 @@ docker run -d \
   -e RUCKUS_HOST=10.42.11.5 \
   -e RUCKUS_PASSWORD=your_password \
   -e LOKI_URL=http://loki:3100/loki/api/v1/push \
-  ccampbell/ruckus-unleashed-exporter
+  ccmpbll/ruckus-unleashed-exporter
 ```
 
 ## Prometheus Scrape Config
