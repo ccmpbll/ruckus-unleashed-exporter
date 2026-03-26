@@ -1,0 +1,27 @@
+name: docker-image-build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@main
+
+    - name: Log into Docker Hub
+      env:
+        user: ${{secrets.DOCKER_USER}}
+        pass: ${{secrets.DOCKER_PASS}}
+      run: docker login -u $user -p $pass
+
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag ${{secrets.DOCKER_USER}}/ruckus-unleashed-exporter:latest
+
+    - name: Docker Push
+      run: docker push ${{secrets.DOCKER_USER}}/ruckus-unleashed-exporter:latest
