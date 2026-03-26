@@ -3,25 +3,24 @@ name: docker-image-build
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check out the repo
-      uses: actions/checkout@main
+      - name: Check out the repo
+        uses: actions/checkout@v4
 
-    - name: Log into Docker Hub
-      env:
-        user: ${{secrets.DOCKER_USER}}
-        pass: ${{secrets.DOCKER_PASS}}
-      run: docker login -u $user -p $pass
+      - name: Log into Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
 
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ${{secrets.DOCKER_USER}}/ruckus-unleashed-exporter:latest
-
-    - name: Docker Push
-      run: docker push ${{secrets.DOCKER_USER}}/ruckus-unleashed-exporter:latest
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKER_USER }}/ruckus-unleashed-exporter:latest
