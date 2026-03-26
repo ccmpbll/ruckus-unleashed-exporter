@@ -10,7 +10,7 @@ ENV RUCKUS_HOST=""
 ENV RUCKUS_PASSWORD=""
 
 # --- Auth ---
-ENV RUCKUS_USER="admin"
+ENV RUCKUS_USER=""
 
 # --- Exporter ---
 ENV EXPORTER_PORT="9785"

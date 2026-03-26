@@ -23,7 +23,7 @@ docker run -d \
 |---|---|---|---|
 | `RUCKUS_HOST` | Yes | — | IP or hostname of the Unleashed master AP |
 | `RUCKUS_PASSWORD` | Yes | — | Unleashed admin password |
-| `RUCKUS_USER` | No | `admin` | Unleashed admin username |
+| `RUCKUS_USER` | Yes | — | Unleashed admin username |
 | `EXPORTER_PORT` | No | `9785` | Port to expose Prometheus metrics on |
 | `POLL_INTERVAL` | No | `60` | Seconds between data collection cycles |
 | `LOKI_URL` | No | — | Loki push endpoint (e.g. `http://loki:3100/loki/api/v1/push`). Leave unset to disable. |

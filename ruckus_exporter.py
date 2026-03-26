@@ -41,7 +41,7 @@ from prometheus_client import (
 # Configuration
 # ---------------------------------------------------------------------------
 RUCKUS_HOST = os.environ.get("RUCKUS_HOST", "")
-RUCKUS_USER = os.environ.get("RUCKUS_USER", "admin")
+RUCKUS_USER = os.environ.get("RUCKUS_USER", "")
 RUCKUS_PASSWORD = os.environ.get("RUCKUS_PASSWORD", "")
 EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
@@ -599,8 +599,8 @@ async def collection_loop():
 
 
 async def main():
-    if not RUCKUS_HOST or not RUCKUS_PASSWORD:
-        log.error("RUCKUS_HOST and RUCKUS_PASSWORD environment variables are required")
+    if not RUCKUS_HOST or not RUCKUS_USER or not RUCKUS_PASSWORD:
+        log.error("RUCKUS_HOST, RUCKUS_USER, and RUCKUS_PASSWORD environment variables are required")
         sys.exit(1)
 
     log.info("Starting Ruckus Unleashed exporter")
