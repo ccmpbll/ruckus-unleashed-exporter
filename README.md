@@ -71,7 +71,7 @@ scrape_configs:
 
 | Metric | Description |
 |---|---|
-| `ruckus_system_info` | System identity (name, model, serial, firmware version) |
+| `ruckus_system_info` | System identity: name, ip, model, serial, firmware, hardware_version |
 | `ruckus_system_cpu_percent` | CPU utilization |
 | `ruckus_system_memory_percent` | Memory utilization |
 | `ruckus_system_ap_count` | Number of APs |
@@ -83,34 +83,43 @@ scrape_configs:
 |---|---|---|
 | `ruckus_ap_status` | `ap_mac`, `ap_name`, `ap_model` | Connection status (1=connected) |
 | `ruckus_ap_client_count` | `ap_mac`, `ap_name` | Clients connected to this AP |
+| `ruckus_ap_uptime_seconds` | `ap_mac`, `ap_name` | AP uptime in seconds |
+| `ruckus_ap_lan_rx_bytes` | `ap_mac`, `ap_name` | LAN interface RX bytes |
+| `ruckus_ap_lan_tx_bytes` | `ap_mac`, `ap_name` | LAN interface TX bytes |
 
 ### Per-Radio
 
 | Metric | Labels | Description |
 |---|---|---|
 | `ruckus_radio_client_count` | `ap_mac`, `ap_name`, `radio_band`, `channel` | Clients on this radio |
-| `ruckus_radio_tx_power_dbm` | `ap_mac`, `ap_name`, `radio_band` | Transmit power |
-| `ruckus_radio_noise_floor_dbm` | `ap_mac`, `ap_name`, `radio_band` | Noise floor |
-| `ruckus_radio_phy_errors_total` | `ap_mac`, `ap_name`, `radio_band` | Physical layer errors |
-| `ruckus_radio_channel_utilization_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime utilization |
+| `ruckus_radio_tx_power_dbm` | `ap_mac`, `ap_name`, `radio_band` | Transmit power in dBm |
+| `ruckus_radio_noise_floor_dbm` | `ap_mac`, `ap_name`, `radio_band` | Noise floor in dBm |
+| `ruckus_radio_phy_errors_total` | `ap_mac`, `ap_name`, `radio_band` | PHY errors |
+| `ruckus_radio_channel_utilization_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime busy % |
+| `ruckus_radio_airtime_rx_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime RX % |
+| `ruckus_radio_airtime_tx_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime TX % |
+| `ruckus_radio_tx_bytes` | `ap_mac`, `ap_name`, `radio_band` | Radio total TX bytes |
+| `ruckus_radio_rx_bytes` | `ap_mac`, `ap_name`, `radio_band` | Radio total RX bytes |
+| `ruckus_radio_tx_retries_total` | `ap_mac`, `ap_name`, `radio_band` | TX retries |
 
 ### Per-Client
 
 | Metric | Labels | Description |
 |---|---|---|
-| `ruckus_client_rssi_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal strength |
-| `ruckus_client_tx_rate_mbps` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | TX data rate |
-| `ruckus_client_rx_rate_mbps` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | RX data rate |
-| `ruckus_client_tx_bytes` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Total TX bytes |
-| `ruckus_client_rx_bytes` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Total RX bytes |
+| `ruckus_client_rssi_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal strength in dBm |
+| `ruckus_client_noise_floor_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Noise floor in dBm |
 
 ### Per-VAP (SSID)
 
 | Metric | Labels | Description |
 |---|---|---|
 | `ruckus_vap_client_count` | `ap_mac`, `ssid`, `radio_band`, `bssid` | Clients on this VAP |
-| `ruckus_vap_tx_bytes` | `ap_mac`, `ssid`, `radio_band` | Total TX bytes |
-| `ruckus_vap_rx_bytes` | `ap_mac`, `ssid`, `radio_band` | Total RX bytes |
+| `ruckus_vap_tx_bytes` | `ap_mac`, `ssid`, `radio_band` | TX bytes |
+| `ruckus_vap_rx_bytes` | `ap_mac`, `ssid`, `radio_band` | RX bytes |
+| `ruckus_vap_tx_packets_total` | `ap_mac`, `ssid`, `radio_band` | TX packets |
+| `ruckus_vap_rx_packets_total` | `ap_mac`, `ssid`, `radio_band` | RX packets |
+| `ruckus_vap_tx_errors_total` | `ap_mac`, `ssid`, `radio_band` | TX errors |
+| `ruckus_vap_rx_errors_total` | `ap_mac`, `ssid`, `radio_band` | RX errors |
 
 ### Events / Alarms (Loki)
 

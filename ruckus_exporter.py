@@ -13,6 +13,7 @@ Environment Variables:
   LOKI_URL          - Loki push endpoint (optional, e.g. http://loki:3100/loki/api/v1/push)
   LOKI_JOB          - Loki job label (default: ruckus_unleashed)
   LOG_LEVEL         - Logging level (default: INFO)
+  DEBUG_DUMP        - Set to 1 to log raw API responses on first scrape (default: 0)
 """
 
 import asyncio
@@ -56,16 +57,14 @@ log = logging.getLogger("ruckus_exporter")
 # Persistent state (survives across scrapes)
 # ---------------------------------------------------------------------------
 
-# Loki dedup: only push events/alarms newer than what we've already seen
 _last_event_time = 0
 _last_alarm_time = 0
-
-# Cumulative event/alarm counts since process start
 _event_counts: dict[str, int] = {}
 _alarm_counts: dict[str, int] = {}
-
-# Prevents concurrent API sessions if Prometheus fires overlapping scrapes
 _scrape_lock: asyncio.Lock | None = None
+
+# Fields that must never appear in logs or Loki streams
+_SCRUB_FIELDS = {"wpa-passphrase", "wpa-passphrase-len", "preSharedKey", "psk", "password"}
 
 
 def _get_scrape_lock() -> asyncio.Lock:
@@ -93,34 +92,44 @@ def _safe_int(val, default=0):
         return default
 
 
-def _radio_band(radio_data: dict) -> str:
-    channel = _safe_int(radio_data.get("channel", radio_data.get("@channel", 0)))
+def _band_from_str(s: str) -> str:
+    """Normalise radio-band strings like '2.4g', '5g', '6g' to standard labels."""
+    b = s.lower().strip()
+    if b.startswith("2.4"):
+        return "2.4GHz"
+    if b.startswith("5"):
+        return "5GHz"
+    if b.startswith("6"):
+        return "6GHz"
+    return b
+
+
+def _radio_band(data: dict) -> str:
+    """Return band label from any dict that has a radio-band or channel field."""
+    rb = str(data.get("radio-band", ""))
+    if rb:
+        return _band_from_str(rb)
+    channel = _safe_int(data.get("channel", 0))
     if 1 <= channel <= 14:
         return "2.4GHz"
-    elif 36 <= channel <= 177:
+    if 36 <= channel <= 177:
         return "5GHz"
-    elif channel > 177:
+    if channel > 177:
         return "6GHz"
-    radio_id = str(radio_data.get("@radio", radio_data.get("radio", "")))
-    if radio_id in ("wifi0", "0", "a/b/g/n"):
-        return "2.4GHz"
-    elif radio_id in ("wifi1", "1", "a/n/ac"):
-        return "5GHz"
     return f"unknown-ch{channel}"
 
 
-def _client_band(client: dict) -> str:
-    radio_type = str(client.get("radio-type", client.get("@radio-type", "")))
-    if "11b" in radio_type or "11g" in radio_type or "2.4" in radio_type:
-        return "2.4GHz"
-    if "11a" in radio_type or "11n/a" in radio_type or "11ac" in radio_type or "11ax-5" in radio_type or "5" in radio_type:
-        return "5GHz"
-    channel = _safe_int(client.get("channel", client.get("@channel", 0)))
-    if 1 <= channel <= 14:
-        return "2.4GHz"
-    elif channel >= 36:
-        return "5GHz"
-    return "unknown"
+def _scrub(d: dict) -> dict:
+    """Return a copy of d with sensitive fields removed."""
+    return {k: v for k, v in d.items() if k not in _SCRUB_FIELDS}
+
+
+def _mem_percent(avail: str, total: str) -> float:
+    t = _safe_float(total)
+    a = _safe_float(avail)
+    if t <= 0:
+        return 0.0
+    return round((t - a) / t * 100, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +144,7 @@ async def push_to_loki(entries: list[dict], labels: dict):
     for entry in entries:
         ts = entry.get("_ts", int(time.time()))
         ts_ns = str(int(ts) * 1_000_000_000)
-        msg = entry.get("_msg", json.dumps(entry, default=str))
+        msg = entry.get("_msg", json.dumps(_scrub(entry), default=str))
         values.append([ts_ns, msg])
 
     payload = {"streams": [{"stream": labels, "values": values}]}
@@ -164,26 +173,22 @@ async def process_events(api):
     try:
         all_events = await api.get_all_events(limit=100)
         if DEBUG_DUMP and all_events:
-            log.info("DEBUG events[0]: %s", json.dumps(all_events[0], default=str)[:8000])
+            log.info("DEBUG events[0]: %s", json.dumps(_scrub(all_events[0]), default=str))
         new_events = []
         max_ts = _last_event_time
         for ev in all_events:
-            ev_time = _safe_int(ev.get("time", ev.get("@time", 0)))
+            ev_time = _safe_int(ev.get("time", 0))
             if ev_time > _last_event_time:
-                ev_type = ev.get("type", ev.get("@type", "unknown"))
+                ev_type = ev.get("msg", ev.get("type", "unknown"))
                 _event_counts[ev_type] = _event_counts.get(ev_type, 0) + 1
                 new_events.append({
                     "_ts": ev_time,
-                    "_msg": json.dumps(ev, default=str),
+                    "_msg": ev.get("lmsg", json.dumps(_scrub(ev), default=str)),
                 })
                 max_ts = max(max_ts, ev_time)
         _last_event_time = max_ts
         if new_events:
-            await push_to_loki(new_events, {
-                "job": LOKI_JOB,
-                "host": RUCKUS_HOST,
-                "log_type": "event",
-            })
+            await push_to_loki(new_events, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "event"})
             log.info("Pushed %d new events to Loki", len(new_events))
     except Exception as e:
         log.error("Error fetching events: %s", e)
@@ -194,22 +199,18 @@ async def process_events(api):
         new_alarms = []
         max_ts = _last_alarm_time
         for alarm in all_alarms:
-            alarm_time = _safe_int(alarm.get("time", alarm.get("@time", 0)))
+            alarm_time = _safe_int(alarm.get("time", 0))
             if alarm_time > _last_alarm_time:
-                severity = alarm.get("severity", alarm.get("@severity", "unknown"))
+                severity = alarm.get("severity", "unknown")
                 _alarm_counts[severity] = _alarm_counts.get(severity, 0) + 1
                 new_alarms.append({
                     "_ts": alarm_time,
-                    "_msg": json.dumps(alarm, default=str),
+                    "_msg": alarm.get("lmsg", json.dumps(_scrub(alarm), default=str)),
                 })
                 max_ts = max(max_ts, alarm_time)
         _last_alarm_time = max_ts
         if new_alarms:
-            await push_to_loki(new_alarms, {
-                "job": LOKI_JOB,
-                "host": RUCKUS_HOST,
-                "log_type": "alarm",
-            })
+            await push_to_loki(new_alarms, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "alarm"})
             log.info("Pushed %d new alarms to Loki", len(new_alarms))
     except Exception as e:
         log.error("Error fetching alarms: %s", e)
@@ -224,99 +225,77 @@ async def collect_metrics() -> bytes:
     registry = CollectorRegistry()
 
     # -- Scrape health --
-    scrape_success = Gauge(
-        "ruckus_scrape_success", "Whether the last scrape succeeded (1=yes, 0=no)",
-        registry=registry,
-    )
-    scrape_duration = Gauge(
-        "ruckus_scrape_duration_seconds", "Duration of the last scrape in seconds",
-        registry=registry,
-    )
+    scrape_success = Gauge("ruckus_scrape_success", "1 if last scrape succeeded", registry=registry)
+    scrape_duration = Gauge("ruckus_scrape_duration_seconds", "Duration of last scrape", registry=registry)
 
     # -- System --
     system_info = Info("ruckus_system", "Unleashed system information", registry=registry)
-    system_cpu = Gauge("ruckus_system_cpu_percent", "CPU utilization", registry=registry)
-    system_memory = Gauge("ruckus_system_memory_percent", "Memory utilization", registry=registry)
+    system_cpu = Gauge("ruckus_system_cpu_percent", "Master AP CPU utilization", registry=registry)
+    system_memory = Gauge("ruckus_system_memory_percent", "Master AP memory utilization", registry=registry)
     system_num_ap = Gauge("ruckus_system_ap_count", "Number of APs", registry=registry)
-    system_num_clients = Gauge("ruckus_system_client_count", "Number of authorized clients", registry=registry)
+    system_num_clients = Gauge("ruckus_system_client_count", "Number of connected clients", registry=registry)
 
     # -- Per-AP --
-    ap_status = Gauge(
-        "ruckus_ap_status", "AP connection status (1=connected, 0=other)",
-        ["ap_mac", "ap_name", "ap_model"], registry=registry,
-    )
-    ap_clients = Gauge(
-        "ruckus_ap_client_count", "Number of clients connected to this AP",
-        ["ap_mac", "ap_name"], registry=registry,
-    )
+    ap_status = Gauge("ruckus_ap_status", "AP connection status (1=connected)",
+                      ["ap_mac", "ap_name", "ap_model"], registry=registry)
+    ap_clients = Gauge("ruckus_ap_client_count", "Clients connected to this AP",
+                       ["ap_mac", "ap_name"], registry=registry)
+    ap_uptime = Gauge("ruckus_ap_uptime_seconds", "AP uptime in seconds",
+                      ["ap_mac", "ap_name"], registry=registry)
+    ap_lan_rx_bytes = Gauge("ruckus_ap_lan_rx_bytes", "AP LAN interface RX bytes",
+                            ["ap_mac", "ap_name"], registry=registry)
+    ap_lan_tx_bytes = Gauge("ruckus_ap_lan_tx_bytes", "AP LAN interface TX bytes",
+                            ["ap_mac", "ap_name"], registry=registry)
 
     # -- Per-radio --
-    radio_clients = Gauge(
-        "ruckus_radio_client_count", "Number of clients on this radio",
-        ["ap_mac", "ap_name", "radio_band", "channel"], registry=registry,
-    )
-    radio_tx_power = Gauge(
-        "ruckus_radio_tx_power_dbm", "Radio transmit power in dBm",
-        ["ap_mac", "ap_name", "radio_band"], registry=registry,
-    )
-    radio_noise_floor = Gauge(
-        "ruckus_radio_noise_floor_dbm", "Radio noise floor in dBm",
-        ["ap_mac", "ap_name", "radio_band"], registry=registry,
-    )
-    radio_phy_errors = Gauge(
-        "ruckus_radio_phy_errors_total", "Radio physical layer errors",
-        ["ap_mac", "ap_name", "radio_band"], registry=registry,
-    )
-    radio_channel_utilization = Gauge(
-        "ruckus_radio_channel_utilization_percent", "Channel utilization (airtime busy)",
-        ["ap_mac", "ap_name", "radio_band"], registry=registry,
-    )
+    radio_clients = Gauge("ruckus_radio_client_count", "Clients on this radio",
+                          ["ap_mac", "ap_name", "radio_band", "channel"], registry=registry)
+    radio_tx_power = Gauge("ruckus_radio_tx_power_dbm", "Radio TX power in dBm",
+                           ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_noise_floor = Gauge("ruckus_radio_noise_floor_dbm", "Radio noise floor in dBm",
+                              ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_phy_errors = Gauge("ruckus_radio_phy_errors_total", "Radio PHY errors",
+                             ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_channel_utilization = Gauge("ruckus_radio_channel_utilization_percent", "Airtime busy %",
+                                      ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_airtime_rx = Gauge("ruckus_radio_airtime_rx_percent", "Airtime RX %",
+                             ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_airtime_tx = Gauge("ruckus_radio_airtime_tx_percent", "Airtime TX %",
+                             ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_tx_bytes = Gauge("ruckus_radio_tx_bytes", "Radio total TX bytes",
+                           ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_rx_bytes = Gauge("ruckus_radio_rx_bytes", "Radio total RX bytes",
+                           ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_tx_retries = Gauge("ruckus_radio_tx_retries_total", "Radio TX retries",
+                             ["ap_mac", "ap_name", "radio_band"], registry=registry)
 
     # -- Per-client --
-    client_rssi = Gauge(
-        "ruckus_client_rssi_dbm", "Client RSSI signal strength",
-        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry,
-    )
-    client_tx_rate = Gauge(
-        "ruckus_client_tx_rate_mbps", "Client TX data rate in Mbps",
-        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry,
-    )
-    client_rx_rate = Gauge(
-        "ruckus_client_rx_rate_mbps", "Client RX data rate in Mbps",
-        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry,
-    )
-    client_tx_bytes = Gauge(
-        "ruckus_client_tx_bytes", "Client TX bytes",
-        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry,
-    )
-    client_rx_bytes = Gauge(
-        "ruckus_client_rx_bytes", "Client RX bytes",
-        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry,
-    )
+    client_rssi = Gauge("ruckus_client_rssi_dbm", "Client signal strength in dBm",
+                        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_noise_floor = Gauge("ruckus_client_noise_floor_dbm", "Client noise floor in dBm",
+                               ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
 
     # -- Per-VAP --
-    vap_clients = Gauge(
-        "ruckus_vap_client_count", "Number of clients on this VAP",
-        ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry,
-    )
-    vap_tx_bytes = Gauge(
-        "ruckus_vap_tx_bytes", "VAP total TX bytes",
-        ["ap_mac", "ssid", "radio_band"], registry=registry,
-    )
-    vap_rx_bytes = Gauge(
-        "ruckus_vap_rx_bytes", "VAP total RX bytes",
-        ["ap_mac", "ssid", "radio_band"], registry=registry,
-    )
+    vap_clients = Gauge("ruckus_vap_client_count", "Clients on this VAP",
+                        ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry)
+    vap_tx_bytes = Gauge("ruckus_vap_tx_bytes", "VAP TX bytes",
+                         ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_rx_bytes = Gauge("ruckus_vap_rx_bytes", "VAP RX bytes",
+                         ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_tx_pkts = Gauge("ruckus_vap_tx_packets_total", "VAP TX packets",
+                        ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_rx_pkts = Gauge("ruckus_vap_rx_packets_total", "VAP RX packets",
+                        ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_tx_errors = Gauge("ruckus_vap_tx_errors_total", "VAP TX errors",
+                          ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_rx_errors = Gauge("ruckus_vap_rx_errors_total", "VAP RX errors",
+                          ["ap_mac", "ssid", "radio_band"], registry=registry)
 
     # -- Event/alarm counts (cumulative since process start) --
-    events_seen = Gauge(
-        "ruckus_events_total", "Total events observed by type since process start",
-        ["event_type"], registry=registry,
-    )
-    alarms_seen = Gauge(
-        "ruckus_alarms_total", "Total alarms observed by severity since process start",
-        ["severity"], registry=registry,
-    )
+    events_seen = Gauge("ruckus_events_total", "Total events observed by type since process start",
+                        ["event_type"], registry=registry)
+    alarms_seen = Gauge("ruckus_alarms_total", "Total alarms observed by severity since process start",
+                        ["severity"], registry=registry)
 
     start = time.monotonic()
     ap_count = 0
@@ -329,7 +308,7 @@ async def collect_metrics() -> bytes:
             api = session.api
 
             # -----------------------------------------------------------
-            # System Info
+            # System Info (sysinfo for name/IP, ap_stats for everything else)
             # -----------------------------------------------------------
             try:
                 sysinfo = await api.get_system_info(SystemStat.ALL)
@@ -337,79 +316,102 @@ async def collect_metrics() -> bytes:
                     log.info("DEBUG sysinfo identity: %s", json.dumps(sysinfo.get("identity", {}), default=str))
                     log.info("DEBUG sysinfo mgmt-ip: %s", json.dumps(sysinfo.get("mgmt-ip", {}), default=str))
                 identity = sysinfo.get("identity", {})
-                sys_stats = sysinfo.get("sysinfo", {})
-
-                system_info.info({
-                    "name": str(identity.get("name", "")),
-                    "model": str(identity.get("model", "")),
-                    "serial": str(identity.get("serial", "")),
-                    "version": str(identity.get("version", "")),
-                    "country_code": str(identity.get("country-code", "")),
-                    "ip": str(identity.get("ip-addr", RUCKUS_HOST)),
-                })
-                system_cpu.set(_safe_float(sys_stats.get("cpu", 0)))
-                system_memory.set(_safe_float(sys_stats.get("memory", 0)))
+                mgmt_ip = sysinfo.get("mgmt-ip", {})
+                sys_name = str(identity.get("name", ""))
+                sys_ip = str(mgmt_ip.get("ip", RUCKUS_HOST))
             except Exception as e:
-                log.error("Error collecting system info: %s", e)
+                log.error("Error fetching sysinfo: %s", e)
+                sys_name = ""
+                sys_ip = RUCKUS_HOST
 
             # -----------------------------------------------------------
             # AP Stats
             # -----------------------------------------------------------
             try:
                 ap_stats_list = await api.get_ap_stats()
+                ap_count = len(ap_stats_list)
+
                 if DEBUG_DUMP and ap_stats_list:
                     ap0 = ap_stats_list[0]
-                    # Dump top-level scalar fields (exclude nested lists)
                     top = {k: v for k, v in ap0.items() if not isinstance(v, (list, dict))}
-                    log.info("DEBUG ap_stats[0] top-level: %s", json.dumps(top, default=str))
-                    # Dump each radio sub-object in full
+                    log.info("DEBUG ap_stats[0] top-level: %s", json.dumps(_scrub(top), default=str))
                     for i, r in enumerate(ap0.get("radio", [])):
                         log.info("DEBUG ap_stats[0] radio[%d]: %s", i, json.dumps(r, default=str))
-                ap_count = len(ap_stats_list)
-                total_clients = 0
 
+                # Use the master AP (role=master) or first AP for system-level info
+                master_ap = next(
+                    (ap for ap in ap_stats_list if ap.get("role") == "master"),
+                    ap_stats_list[0] if ap_stats_list else {}
+                )
+
+                system_info.info({
+                    "name": sys_name,
+                    "ip": sys_ip,
+                    "model": str(master_ap.get("model", "")),
+                    "serial": str(master_ap.get("serial-number", "")),
+                    "firmware": str(master_ap.get("firmware-version", "")),
+                    "hardware_version": str(master_ap.get("hardware-version", "")),
+                })
+                system_cpu.set(_safe_float(master_ap.get("cpu_util", 0)))
+                system_memory.set(_mem_percent(
+                    master_ap.get("mem_avail", "0"),
+                    master_ap.get("mem_total", "0"),
+                ))
+
+                total_clients = 0
                 for ap in ap_stats_list:
-                    mac = ap.get("mac", ap.get("@mac", "unknown"))
-                    name = ap.get("devname", ap.get("@devname", mac))
-                    model = ap.get("model", ap.get("@model", "unknown"))
-                    status_val = ap.get("status", ap.get("@status", ""))
-                    is_connected = 1 if str(status_val).lower() in ("1", "connected") else 0
+                    mac = ap.get("mac", "unknown")
+                    name = ap.get("devname", mac)
+                    model = ap.get("model", "unknown")
+                    is_connected = 1 if str(ap.get("state", "0")) == "1" else 0
+                    ap_client_count = _safe_int(ap.get("num-sta", 0))
 
                     ap_status.labels(ap_mac=mac, ap_name=name, ap_model=model).set(is_connected)
-
-                    ap_client_count = _safe_int(ap.get("client", ap.get("@client", 0)))
                     ap_clients.labels(ap_mac=mac, ap_name=name).set(ap_client_count)
+                    ap_uptime.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("uptime", 0)))
+                    ap_lan_rx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_rx_byte", 0)))
+                    ap_lan_tx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_tx_byte", 0)))
                     total_clients += ap_client_count
 
+                    # Per-radio stats from radio sub-array
                     radios = ap.get("radio", [])
                     if isinstance(radios, dict):
                         radios = [radios]
-
                     for radio in radios:
                         if not isinstance(radio, dict):
                             continue
                         band = _radio_band(radio)
-                        channel = str(radio.get("channel", radio.get("@channel", "0")))
+                        channel = str(radio.get("channel", "0"))
 
                         radio_clients.labels(ap_mac=mac, ap_name=name, radio_band=band, channel=channel).set(
-                            _safe_int(radio.get("client", radio.get("@client", 0)))
+                            _safe_int(radio.get("num-sta", 0))
                         )
                         radio_tx_power.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("tx-power", radio.get("@tx-power", 0)))
+                            _safe_float(radio.get("tx-power", 0))
                         )
                         radio_noise_floor.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("noise-floor", radio.get("@noise-floor", 0)))
+                            _safe_float(radio.get("noisefloor", 0))
                         )
                         radio_phy_errors.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("phy-error", radio.get("@phy-error", 0)))
+                            _safe_float(radio.get("phyerr", 0))
                         )
                         radio_channel_utilization.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(
-                                radio.get("channel-utilization",
-                                radio.get("@channel-utilization",
-                                radio.get("airtime",
-                                radio.get("@airtime", 0))))
-                            )
+                            _safe_float(radio.get("airtime-busy", 0))
+                        )
+                        radio_airtime_rx.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("airtime-rx", 0))
+                        )
+                        radio_airtime_tx.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("airtime-tx", 0))
+                        )
+                        radio_tx_bytes.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("total-tx-bytes", 0))
+                        )
+                        radio_rx_bytes.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("total-rx-bytes", 0))
+                        )
+                        radio_tx_retries.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("radio-total-retries", 0))
                         )
 
                 system_num_ap.set(ap_count)
@@ -423,27 +425,27 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 clients = await api.get_active_clients()
-                if DEBUG_DUMP and clients:
-                    log.info("DEBUG clients[0]: %s", json.dumps(clients[0], default=str)[:8000])
                 client_count = len(clients)
 
+                if DEBUG_DUMP and clients:
+                    log.info("DEBUG clients[0]: %s", json.dumps(_scrub(clients[0]), default=str))
+
                 for cl in clients:
-                    cl_mac = cl.get("mac", cl.get("@mac", "unknown"))
-                    cl_name = cl.get("hostname", cl.get("@hostname",
-                              cl.get("user", cl.get("@user", cl_mac))))
-                    cl_ap = cl.get("ap", cl.get("@ap", "unknown"))
-                    cl_ssid = cl.get("ssid", cl.get("@ssid",
-                              cl.get("wlan", cl.get("@wlan", "unknown"))))
-                    cl_band = _client_band(cl)
+                    cl_mac = cl.get("mac", "unknown")
+                    cl_name = cl.get("hostname") or cl.get("user") or cl_mac
+                    cl_ap = cl.get("ap", "unknown")
+                    cl_ssid = cl.get("ssid") or cl.get("wlan", "unknown")
+                    cl_band = _radio_band(cl)
 
                     labels = dict(client_mac=cl_mac, client_name=cl_name,
                                   ap_mac=cl_ap, ssid=cl_ssid, radio_band=cl_band)
 
-                    client_rssi.labels(**labels).set(_safe_float(cl.get("signal", cl.get("@signal", 0))))
-                    client_tx_rate.labels(**labels).set(_safe_float(cl.get("tx-rate", cl.get("@tx-rate", 0))))
-                    client_rx_rate.labels(**labels).set(_safe_float(cl.get("rx-rate", cl.get("@rx-rate", 0))))
-                    client_tx_bytes.labels(**labels).set(_safe_float(cl.get("tx-bytes", cl.get("@tx-bytes", 0))))
-                    client_rx_bytes.labels(**labels).set(_safe_float(cl.get("rx-bytes", cl.get("@rx-bytes", 0))))
+                    client_rssi.labels(**labels).set(
+                        _safe_float(cl.get("received-signal-strength", 0))
+                    )
+                    client_noise_floor.labels(**labels).set(
+                        _safe_float(cl.get("noise-floor", 0))
+                    )
 
             except Exception as e:
                 log.error("Error collecting client stats: %s", e)
@@ -453,25 +455,36 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 vaps = await api.get_vap_stats()
+
                 if DEBUG_DUMP and vaps:
-                    log.info("DEBUG vaps[0]: %s", json.dumps(vaps[0], default=str)[:8000])
+                    log.info("DEBUG vaps[0]: %s", json.dumps(vaps[0], default=str))
 
                 for vap in vaps:
-                    v_ap = vap.get("ap-mac", vap.get("@ap-mac",
-                           vap.get("mac", vap.get("@mac", "unknown"))))
-                    v_ssid = vap.get("ssid", vap.get("@ssid",
-                             vap.get("wlan", vap.get("@wlan", "unknown"))))
-                    v_bssid = vap.get("bssid", vap.get("@bssid", "unknown"))
+                    v_ap = vap.get("ap", "unknown")
+                    v_ssid = vap.get("ssid") or vap.get("wlan", "unknown")
+                    v_bssid = vap.get("bssid", "unknown")
                     v_band = _radio_band(vap)
 
                     vap_clients.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band, bssid=v_bssid).set(
-                        _safe_int(vap.get("client", vap.get("@client", 0)))
+                        _safe_int(vap.get("num-sta", 0))
                     )
                     vap_tx_bytes.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("tx-bytes", vap.get("@tx-bytes", 0)))
+                        _safe_float(vap.get("tx-bytes", 0))
                     )
                     vap_rx_bytes.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("rx-bytes", vap.get("@rx-bytes", 0)))
+                        _safe_float(vap.get("rx-bytes", 0))
+                    )
+                    vap_tx_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
+                        _safe_float(vap.get("tx-pkts", 0))
+                    )
+                    vap_rx_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
+                        _safe_float(vap.get("rx-pkts", 0))
+                    )
+                    vap_tx_errors.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
+                        _safe_float(vap.get("tx-errors", 0))
+                    )
+                    vap_rx_errors.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
+                        _safe_float(vap.get("rx-errors", 0))
                     )
 
             except Exception as e:
