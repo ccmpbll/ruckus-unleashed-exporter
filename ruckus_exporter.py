@@ -8,7 +8,7 @@ Prometheus scrape request.
 Environment Variables:
   RUCKUS_HOST       - IP or hostname of Unleashed AP (required)
   RUCKUS_USER       - Unleashed admin username (required)
-  RUCKUS_PASSWORD   - Unleashed admin password (required)
+  RUCKUS_PASS       - Unleashed admin password (required)
   EXPORTER_PORT     - Prometheus metrics port (default: 9785)
   LOG_LEVEL         - Logging level (default: INFO)
   DEBUG_DUMP        - Set to 1 to log raw API responses on first scrape (default: 0)
@@ -37,7 +37,7 @@ from prometheus_client import (
 # ---------------------------------------------------------------------------
 RUCKUS_HOST = os.environ.get("RUCKUS_HOST", "")
 RUCKUS_USER = os.environ.get("RUCKUS_USER", "")
-RUCKUS_PASSWORD = os.environ.get("RUCKUS_PASSWORD", "")
+RUCKUS_PASS = os.environ.get("RUCKUS_PASS", "")
 EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 DEBUG_DUMP = os.environ.get("DEBUG_DUMP", "").lower() in ("1", "true", "yes")
@@ -195,7 +195,7 @@ async def collect_metrics() -> bytes:
 
     try:
         async with AjaxSession.async_create(
-            RUCKUS_HOST, RUCKUS_USER, RUCKUS_PASSWORD
+            RUCKUS_HOST, RUCKUS_USER, RUCKUS_PASS
         ) as session:
             api = session.api
 
@@ -413,8 +413,8 @@ async def health_handler(request):
 # ---------------------------------------------------------------------------
 
 async def main():
-    if not RUCKUS_HOST or not RUCKUS_USER or not RUCKUS_PASSWORD:
-        log.error("RUCKUS_HOST, RUCKUS_USER, and RUCKUS_PASSWORD environment variables are required")
+    if not RUCKUS_HOST or not RUCKUS_USER or not RUCKUS_PASS:
+        log.error("RUCKUS_HOST, RUCKUS_USER, and RUCKUS_PASS environment variables are required")
         sys.exit(1)
 
     log.info("Starting Ruckus Unleashed exporter")

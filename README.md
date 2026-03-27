@@ -14,7 +14,7 @@ docker run -d \
   -p 9785:9785 \
   -e RUCKUS_HOST=192.168.1.5 \
   -e RUCKUS_USER=admin \
-  -e RUCKUS_PASSWORD=your_password \
+  -e RUCKUS_PASS=your_password \
   ccmpbll/ruckus-unleashed-exporter
 ```
 
@@ -23,7 +23,7 @@ docker run -d \
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `RUCKUS_HOST` | Yes | — | IP or hostname of the Unleashed master AP |
-| `RUCKUS_PASSWORD` | Yes | — | Unleashed admin password |
+| `RUCKUS_PASS` | Yes | — | Unleashed admin password |
 | `RUCKUS_USER` | Yes | — | Unleashed admin username |
 | `EXPORTER_PORT` | No | `9785` | Port to expose Prometheus metrics on |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |

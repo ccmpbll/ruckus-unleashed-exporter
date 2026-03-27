@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 # --- Required: no defaults, container will exit with an error if not set ---
 ENV RUCKUS_HOST=""
-ENV RUCKUS_PASSWORD=""
+ENV RUCKUS_PASS=""
 
 # --- Auth ---
 ENV RUCKUS_USER=""
