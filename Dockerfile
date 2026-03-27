@@ -15,10 +15,6 @@ ENV RUCKUS_USER=""
 # --- Exporter ---
 ENV EXPORTER_PORT="9785"
 
-# --- Loki (leave LOKI_URL empty to disable) ---
-ENV LOKI_URL=""
-ENV LOKI_JOB="ruckus_unleashed"
-
 # --- Logging: DEBUG, INFO, WARNING, ERROR ---
 ENV LOG_LEVEL="INFO"
 

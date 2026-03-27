@@ -1,9 +1,9 @@
 # ruckus-unleashed-exporter
 ![Image Build Status](https://img.shields.io/github/actions/workflow/status/ccmpbll/ruckus-unleashed-exporter/docker-image.yml?branch=main) ![Docker Image Size](https://img.shields.io/docker/image-size/ccmpbll/ruckus-unleashed-exporter/latest) ![Docker Pulls](https://img.shields.io/docker/pulls/ccmpbll/ruckus-unleashed-exporter.svg) ![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-Prometheus exporter and Loki event pusher for Ruckus Unleashed access points.
+Prometheus exporter for Ruckus Unleashed access points.
 
-Scrapes the Unleashed AJAX API via [aioruckus](https://github.com/ms264556/aioruckus) and exposes metrics for Prometheus. Optionally pushes events and alarms to Loki.
+Scrapes the Unleashed AJAX API via [aioruckus](https://github.com/ms264556/aioruckus) and exposes metrics for Prometheus.
 
 ## Quick Start
 
@@ -26,23 +26,7 @@ docker run -d \
 | `RUCKUS_PASSWORD` | Yes | — | Unleashed admin password |
 | `RUCKUS_USER` | Yes | — | Unleashed admin username |
 | `EXPORTER_PORT` | No | `9785` | Port to expose Prometheus metrics on |
-| `LOKI_URL` | No | — | Loki push endpoint (e.g. `http://loki:3100/loki/api/v1/push`). Leave unset to disable. |
-| `LOKI_JOB` | No | `ruckus_unleashed` | Job label applied to all Loki streams |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-
-## With Loki
-
-```bash
-docker run -d \
-  --name ruckus-exporter \
-  --restart unless-stopped \
-  -p 9785:9785 \
-  -e RUCKUS_HOST=192.168.1.5 \
-  -e RUCKUS_USER=admin \
-  -e RUCKUS_PASSWORD=your_password \
-  -e LOKI_URL=http://loki:3100/loki/api/v1/push \
-  ccmpbll/ruckus-unleashed-exporter
-```
 
 ## Prometheus Scrape Config
 
@@ -122,15 +106,6 @@ scrape_configs:
 | `ruckus_vap_rx_packets_total` | `ap_mac`, `ssid`, `radio_band` | RX packets |
 | `ruckus_vap_tx_errors_total` | `ap_mac`, `ssid`, `radio_band` | TX errors |
 | `ruckus_vap_rx_errors_total` | `ap_mac`, `ssid`, `radio_band` | RX errors |
-
-### Events / Alarms (Loki)
-
-Events and alarms are pushed to Loki as log streams when `LOKI_URL` is set. Prometheus counters are also maintained:
-
-| Metric | Labels | Description |
-|---|---|---|
-| `ruckus_events_total` | `event_type` | Total events observed |
-| `ruckus_alarms_total` | `severity` | Total alarms observed |
 
 ## Known Potential Issues
 

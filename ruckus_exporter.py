@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """
-Ruckus Unleashed Prometheus Exporter + Loki Event Pusher
+Ruckus Unleashed Prometheus Exporter
 
 Scrapes wireless stats from the Unleashed AJAX API via aioruckus on every
-Prometheus scrape request, and pushes events/alarms to Loki.
+Prometheus scrape request.
 
 Environment Variables:
   RUCKUS_HOST       - IP or hostname of Unleashed AP (required)
   RUCKUS_USER       - Unleashed admin username (required)
   RUCKUS_PASSWORD   - Unleashed admin password (required)
   EXPORTER_PORT     - Prometheus metrics port (default: 9785)
-  LOKI_URL          - Loki push endpoint (optional, e.g. http://loki:3100/loki/api/v1/push)
-  LOKI_JOB          - Loki job label (default: ruckus_unleashed)
   LOG_LEVEL         - Logging level (default: INFO)
   DEBUG_DUMP        - Set to 1 to log raw API responses on first scrape (default: 0)
 """
@@ -24,7 +22,6 @@ import signal
 import sys
 import time
 
-import aiohttp
 from aiohttp import web
 from aioruckus import AjaxSession, SystemStat
 from prometheus_client import (
@@ -42,8 +39,6 @@ RUCKUS_HOST = os.environ.get("RUCKUS_HOST", "")
 RUCKUS_USER = os.environ.get("RUCKUS_USER", "")
 RUCKUS_PASSWORD = os.environ.get("RUCKUS_PASSWORD", "")
 EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
-LOKI_URL = os.environ.get("LOKI_URL", "")
-LOKI_JOB = os.environ.get("LOKI_JOB", "ruckus_unleashed")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 DEBUG_DUMP = os.environ.get("DEBUG_DUMP", "").lower() in ("1", "true", "yes")
 
@@ -54,17 +49,9 @@ logging.basicConfig(
 log = logging.getLogger("ruckus_exporter")
 
 # ---------------------------------------------------------------------------
-# Persistent state (survives across scrapes)
+# Scrape lock (prevents overlapping scrapes)
 # ---------------------------------------------------------------------------
-
-_last_event_time = 0
-_last_alarm_time = 0
-_event_counts: dict[str, int] = {}
-_alarm_counts: dict[str, int] = {}
 _scrape_lock: asyncio.Lock | None = None
-
-# Fields that must never appear in logs or Loki streams
-_SCRUB_FIELDS = {"wpa-passphrase", "wpa-passphrase-len", "preSharedKey", "psk", "password"}
 
 
 def _get_scrape_lock() -> asyncio.Lock:
@@ -119,108 +106,12 @@ def _radio_band(data: dict) -> str:
     return f"unknown-ch{channel}"
 
 
-def _scrub(d: dict) -> dict:
-    """Return a copy of d with sensitive fields removed."""
-    return {k: v for k, v in d.items() if k not in _SCRUB_FIELDS}
-
-
 def _mem_percent(avail: str, total: str) -> float:
     t = _safe_float(total)
     a = _safe_float(avail)
     if t <= 0:
         return 0.0
     return round((t - a) / t * 100, 1)
-
-
-# ---------------------------------------------------------------------------
-# Loki Pusher
-# ---------------------------------------------------------------------------
-
-async def push_to_loki(entries: list[dict], labels: dict) -> bool:
-    if not LOKI_URL or not entries:
-        return False
-
-    values = []
-    for entry in entries:
-        ts = entry.get("_ts", int(time.time()))
-        ts_ns = str(int(ts) * 1_000_000_000)
-        msg = entry.get("_msg", json.dumps(_scrub(entry), default=str))
-        values.append([ts_ns, msg])
-
-    payload = {"streams": [{"stream": labels, "values": values}]}
-
-    try:
-        async with aiohttp.ClientSession() as http:
-            async with http.post(
-                LOKI_URL,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status not in (200, 204):
-                    body = await resp.text()
-                    log.warning("Loki push failed (%s) to %s: %s", resp.status, LOKI_URL, body[:200])
-                    return False
-                return True
-    except Exception as e:
-        log.warning("Loki push error (%s): %s", LOKI_URL, e)
-        return False
-
-
-async def process_events(api):
-    global _last_event_time, _last_alarm_time
-
-    # --- Events ---
-    try:
-        all_events = await api.get_all_events(limit=100)
-        if DEBUG_DUMP and all_events:
-            log.info("DEBUG events[0]: %s", json.dumps(_scrub(all_events[0]), default=str))
-        new_events = []
-        max_ts = _last_event_time
-        for ev in all_events:
-            ev_time = _safe_int(ev.get("time", 0))
-            if ev_time > _last_event_time:
-                ev_type = ev.get("msg", ev.get("type", "unknown"))
-                _event_counts[ev_type] = _event_counts.get(ev_type, 0) + 1
-                new_events.append({
-                    "_ts": ev_time,
-                    "_msg": ev.get("lmsg", json.dumps(_scrub(ev), default=str)),
-                })
-                max_ts = max(max_ts, ev_time)
-        _last_event_time = max_ts
-        if new_events:
-            ok = await push_to_loki(new_events, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "event"})
-            if ok:
-                log.info("Pushed %d new events to Loki", len(new_events))
-            else:
-                log.warning("Failed to push %d events to Loki", len(new_events))
-    except Exception as e:
-        log.error("Error fetching events: %s", e)
-
-    # --- Alarms ---
-    try:
-        all_alarms = await api.get_all_alarms(limit=50)
-        new_alarms = []
-        max_ts = _last_alarm_time
-        for alarm in all_alarms:
-            alarm_time = _safe_int(alarm.get("time", 0))
-            if alarm_time > _last_alarm_time:
-                severity = alarm.get("severity", "unknown")
-                _alarm_counts[severity] = _alarm_counts.get(severity, 0) + 1
-                new_alarms.append({
-                    "_ts": alarm_time,
-                    "_msg": alarm.get("lmsg", json.dumps(_scrub(alarm), default=str)),
-                })
-                max_ts = max(max_ts, alarm_time)
-        _last_alarm_time = max_ts
-        if new_alarms:
-            ok = await push_to_loki(new_alarms, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "alarm"})
-            if ok:
-                log.info("Pushed %d new alarms to Loki", len(new_alarms))
-            else:
-                log.warning("Failed to push %d alarms to Loki", len(new_alarms))
-    except Exception as e:
-        log.error("Error fetching alarms: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -298,12 +189,6 @@ async def collect_metrics() -> bytes:
     vap_rx_errors = Gauge("ruckus_vap_rx_errors_total", "VAP RX errors",
                           ["ap_mac", "ssid", "radio_band"], registry=registry)
 
-    # -- Event/alarm counts (cumulative since process start) --
-    events_seen = Gauge("ruckus_events_total", "Total events observed by type since process start",
-                        ["event_type"], registry=registry)
-    alarms_seen = Gauge("ruckus_alarms_total", "Total alarms observed by severity since process start",
-                        ["severity"], registry=registry)
-
     start = time.monotonic()
     ap_count = 0
     client_count = 0
@@ -341,11 +226,10 @@ async def collect_metrics() -> bytes:
                 if DEBUG_DUMP and ap_stats_list:
                     ap0 = ap_stats_list[0]
                     top = {k: v for k, v in ap0.items() if not isinstance(v, (list, dict))}
-                    log.info("DEBUG ap_stats[0] top-level: %s", json.dumps(_scrub(top), default=str))
+                    log.info("DEBUG ap_stats[0] top-level: %s", json.dumps(top, default=str))
                     for i, r in enumerate(ap0.get("radio", [])):
                         log.info("DEBUG ap_stats[0] radio[%d]: %s", i, json.dumps(r, default=str))
 
-                # Use the master AP (role=master) or first AP for system-level info
                 master_ap = next(
                     (ap for ap in ap_stats_list if ap.get("role") == "master"),
                     ap_stats_list[0] if ap_stats_list else {}
@@ -380,7 +264,6 @@ async def collect_metrics() -> bytes:
                     ap_lan_tx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_tx_byte", 0)))
                     total_clients += ap_client_count
 
-                    # Per-radio stats from radio sub-array
                     radios = ap.get("radio", [])
                     if isinstance(radios, dict):
                         radios = [radios]
@@ -436,7 +319,7 @@ async def collect_metrics() -> bytes:
                 client_count = len(clients)
 
                 if DEBUG_DUMP and clients:
-                    log.info("DEBUG clients[0]: %s", json.dumps(_scrub(clients[0]), default=str))
+                    log.info("DEBUG clients[0]: %s", json.dumps(clients[0], default=str))
 
                 for cl in clients:
                     cl_mac = cl.get("mac", "unknown")
@@ -498,11 +381,6 @@ async def collect_metrics() -> bytes:
             except Exception as e:
                 log.error("Error collecting VAP stats: %s", e)
 
-            # -----------------------------------------------------------
-            # Events + Alarms -> Loki
-            # -----------------------------------------------------------
-            await process_events(api)
-
         scrape_success.set(1)
 
     except Exception as e:
@@ -512,11 +390,6 @@ async def collect_metrics() -> bytes:
     duration = time.monotonic() - start
     scrape_duration.set(duration)
     log.info("Scrape complete in %.1fs — APs=%d clients=%d", duration, ap_count, client_count)
-
-    for ev_type, count in _event_counts.items():
-        events_seen.labels(event_type=ev_type).set(count)
-    for severity, count in _alarm_counts.items():
-        alarms_seen.labels(severity=severity).set(count)
 
     return generate_latest(registry)
 
@@ -547,7 +420,6 @@ async def main():
     log.info("Starting Ruckus Unleashed exporter")
     log.info("  Target: %s (user: %s)", RUCKUS_HOST, RUCKUS_USER)
     log.info("  Metrics port: %d", EXPORTER_PORT)
-    log.info("  Loki: %s", LOKI_URL or "disabled")
 
     app = web.Application()
     app.router.add_get("/metrics", metrics_handler)
