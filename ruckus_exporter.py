@@ -136,9 +136,9 @@ def _mem_percent(avail: str, total: str) -> float:
 # Loki Pusher
 # ---------------------------------------------------------------------------
 
-async def push_to_loki(entries: list[dict], labels: dict):
+async def push_to_loki(entries: list[dict], labels: dict) -> bool:
     if not LOKI_URL or not entries:
-        return
+        return False
 
     values = []
     for entry in entries:
@@ -159,11 +159,12 @@ async def push_to_loki(entries: list[dict], labels: dict):
             ) as resp:
                 if resp.status not in (200, 204):
                     body = await resp.text()
-                    log.warning("Loki push failed (%s): %s", resp.status, body[:200])
-                else:
-                    log.debug("Pushed %d entries to Loki", len(values))
+                    log.warning("Loki push failed (%s) to %s: %s", resp.status, LOKI_URL, body[:200])
+                    return False
+                return True
     except Exception as e:
-        log.warning("Loki push error: %s", e)
+        log.warning("Loki push error (%s): %s", LOKI_URL, e)
+        return False
 
 
 async def process_events(api):
@@ -188,8 +189,11 @@ async def process_events(api):
                 max_ts = max(max_ts, ev_time)
         _last_event_time = max_ts
         if new_events:
-            await push_to_loki(new_events, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "event"})
-            log.info("Pushed %d new events to Loki", len(new_events))
+            ok = await push_to_loki(new_events, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "event"})
+            if ok:
+                log.info("Pushed %d new events to Loki", len(new_events))
+            else:
+                log.warning("Failed to push %d events to Loki", len(new_events))
     except Exception as e:
         log.error("Error fetching events: %s", e)
 
@@ -210,8 +214,11 @@ async def process_events(api):
                 max_ts = max(max_ts, alarm_time)
         _last_alarm_time = max_ts
         if new_alarms:
-            await push_to_loki(new_alarms, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "alarm"})
-            log.info("Pushed %d new alarms to Loki", len(new_alarms))
+            ok = await push_to_loki(new_alarms, {"job": LOKI_JOB, "host": RUCKUS_HOST, "log_type": "alarm"})
+            if ok:
+                log.info("Pushed %d new alarms to Loki", len(new_alarms))
+            else:
+                log.warning("Failed to push %d alarms to Loki", len(new_alarms))
     except Exception as e:
         log.error("Error fetching alarms: %s", e)
 
