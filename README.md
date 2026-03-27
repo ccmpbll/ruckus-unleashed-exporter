@@ -132,6 +132,12 @@ Events and alarms are pushed to Loki as log streams when `LOKI_URL` is set. Prom
 | `ruckus_events_total` | `event_type` | Total events observed |
 | `ruckus_alarms_total` | `severity` | Total alarms observed |
 
+## Known Potential Issues
+
+- **`ruckus_radio_tx_power` reports unexpected values in Auto mode**: When a radio is set to Auto TX power, the AP may report the current dynamically-chosen power level (e.g. `25` on 2.4GHz) rather than `0`. This causes the metric to show a negative value instead of `0`. Radios set to Full or a manual reduction step behave as expected.
+
+- **`ruckus_radio_phy_errors_total` is not a true monotonic counter**: Despite the `_total` suffix, PHY error values appear to reflect a rolling measurement window rather than a cumulative count since boot. Values may decrease between scrapes. This is a limitation of what the Unleashed API exposes.
+
 ## Tested On
 
 - Ruckus R850, Unleashed 200.18.7.101.244
