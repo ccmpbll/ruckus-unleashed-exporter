@@ -12,7 +12,7 @@ docker run -d \
   --name ruckus-exporter \
   --restart unless-stopped \
   -p 9785:9785 \
-  -e RUCKUS_HOST=10.42.11.5 \
+  -e RUCKUS_HOST=192.168.1.5 \
   -e RUCKUS_PASSWORD=your_password \
   ccmpbll/ruckus-unleashed-exporter
 ```
@@ -36,7 +36,7 @@ docker run -d \
   --name ruckus-exporter \
   --restart unless-stopped \
   -p 9785:9785 \
-  -e RUCKUS_HOST=10.42.11.5 \
+  -e RUCKUS_HOST=192.168.1.5 \
   -e RUCKUS_PASSWORD=your_password \
   -e LOKI_URL=http://loki:3100/loki/api/v1/push \
   ccmpbll/ruckus-unleashed-exporter
@@ -123,4 +123,5 @@ Events and alarms are pushed to Loki as log streams when `LOKI_URL` is set. Prom
 
 ## Tested On
 
-- Ruckus R850, Unleashed 200.18.7.x
+- Ruckus R850, Unleashed 200.18.7.101.244
+
