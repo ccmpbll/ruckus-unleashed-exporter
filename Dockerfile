@@ -1,9 +1,7 @@
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.title="ruckus-unleashed-exporter"
-LABEL org.opencontainers.image.description="Prometheus exporter and Loki event pusher for Ruckus Unleashed access points"
-LABEL org.opencontainers.image.source="https://github.com/ccmpbll/ruckus-unleashed-exporter"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL Name="ruckus-unleashed-exporter"
+LABEL maintainer="Chris Campbell"
 
 # --- Required: no defaults, container will exit with an error if not set ---
 ENV RUCKUS_HOST=""
@@ -29,6 +27,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ruckus_exporter.py .
 
 EXPOSE 9785
-
 
 ENTRYPOINT ["python", "-u", "ruckus_exporter.py"]
