@@ -397,13 +397,13 @@ async def collect_metrics() -> bytes:
                             _safe_float(radio.get("phyerr", 0))
                         )
                         radio_channel_utilization.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("airtime-busy", 0))
+                            _safe_float(radio.get("airtime-busy", 0)) / 10
                         )
                         radio_airtime_rx.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("airtime-rx", 0))
+                            _safe_float(radio.get("airtime-rx", 0)) / 10
                         )
                         radio_airtime_tx.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("airtime-tx", 0))
+                            _safe_float(radio.get("airtime-tx", 0)) / 10
                         )
                         radio_tx_bytes.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
                             _safe_float(radio.get("total-tx-bytes", 0))

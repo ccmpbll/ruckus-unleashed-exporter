@@ -13,6 +13,7 @@ docker run -d \
   --restart unless-stopped \
   -p 9785:9785 \
   -e RUCKUS_HOST=192.168.1.5 \
+  -e RUCKUS_USER=admin \
   -e RUCKUS_PASSWORD=your_password \
   ccmpbll/ruckus-unleashed-exporter
 ```
@@ -37,6 +38,7 @@ docker run -d \
   --restart unless-stopped \
   -p 9785:9785 \
   -e RUCKUS_HOST=192.168.1.5 \
+  -e RUCKUS_USER=admin \
   -e RUCKUS_PASSWORD=your_password \
   -e LOKI_URL=http://loki:3100/loki/api/v1/push \
   ccmpbll/ruckus-unleashed-exporter
