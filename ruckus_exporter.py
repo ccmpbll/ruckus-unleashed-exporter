@@ -334,7 +334,8 @@ async def collect_metrics() -> bytes:
             try:
                 sysinfo = await api.get_system_info(SystemStat.ALL)
                 if DEBUG_DUMP:
-                    log.info("DEBUG sysinfo keys: %s", json.dumps(sysinfo, default=str)[:8000])
+                    log.info("DEBUG sysinfo identity: %s", json.dumps(sysinfo.get("identity", {}), default=str))
+                    log.info("DEBUG sysinfo mgmt-ip: %s", json.dumps(sysinfo.get("mgmt-ip", {}), default=str))
                 identity = sysinfo.get("identity", {})
                 sys_stats = sysinfo.get("sysinfo", {})
 
@@ -357,7 +358,13 @@ async def collect_metrics() -> bytes:
             try:
                 ap_stats_list = await api.get_ap_stats()
                 if DEBUG_DUMP and ap_stats_list:
-                    log.info("DEBUG ap_stats[0]: %s", json.dumps(ap_stats_list[0], default=str)[:8000])
+                    ap0 = ap_stats_list[0]
+                    # Dump top-level scalar fields (exclude nested lists)
+                    top = {k: v for k, v in ap0.items() if not isinstance(v, (list, dict))}
+                    log.info("DEBUG ap_stats[0] top-level: %s", json.dumps(top, default=str))
+                    # Dump each radio sub-object in full
+                    for i, r in enumerate(ap0.get("radio", [])):
+                        log.info("DEBUG ap_stats[0] radio[%d]: %s", i, json.dumps(r, default=str))
                 ap_count = len(ap_stats_list)
                 total_clients = 0
 
