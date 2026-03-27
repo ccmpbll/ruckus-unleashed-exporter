@@ -250,7 +250,7 @@ async def collect_metrics() -> bytes:
     # -- Per-radio --
     radio_clients = Gauge("ruckus_radio_client_count", "Clients on this radio",
                           ["ap_mac", "ap_name", "radio_band", "channel"], registry=registry)
-    radio_tx_power = Gauge("ruckus_radio_tx_power_dbm", "Radio TX power in dBm",
+    radio_tx_power = Gauge("ruckus_radio_tx_power", "Radio TX power relative to max (0=Full/Auto, negative=reduced)",
                            ["ap_mac", "ap_name", "radio_band"], registry=registry)
     radio_noise_floor = Gauge("ruckus_radio_noise_floor_dbm", "Radio noise floor in dBm",
                               ["ap_mac", "ap_name", "radio_band"], registry=registry)
@@ -386,8 +386,9 @@ async def collect_metrics() -> bytes:
                         radio_clients.labels(ap_mac=mac, ap_name=name, radio_band=band, channel=channel).set(
                             _safe_int(radio.get("num-sta", 0))
                         )
+                        _txp = _safe_float(radio.get("tx-power", 0))
                         radio_tx_power.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("tx-power", 0))
+                            -_txp if _txp != 0 else 0
                         )
                         radio_noise_floor.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
                             _safe_float(radio.get("noisefloor", 0))

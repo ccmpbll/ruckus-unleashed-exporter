@@ -92,7 +92,7 @@ scrape_configs:
 | Metric | Labels | Description |
 |---|---|---|
 | `ruckus_radio_client_count` | `ap_mac`, `ap_name`, `radio_band`, `channel` | Clients on this radio |
-| `ruckus_radio_tx_power_dbm` | `ap_mac`, `ap_name`, `radio_band` | Transmit power in dBm |
+| `ruckus_radio_tx_power` | `ap_mac`, `ap_name`, `radio_band` | TX power relative to max (0=Full/Auto, -1 to -10=reduction steps, -24=min) |
 | `ruckus_radio_noise_floor_dbm` | `ap_mac`, `ap_name`, `radio_band` | Noise floor in dBm |
 | `ruckus_radio_phy_errors_total` | `ap_mac`, `ap_name`, `radio_band` | PHY errors |
 | `ruckus_radio_channel_utilization_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime busy % |
