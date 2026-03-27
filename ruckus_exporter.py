@@ -489,7 +489,7 @@ async def collect_metrics() -> bytes:
 async def metrics_handler(request):
     async with _get_scrape_lock():
         output = await collect_metrics()
-    return web.Response(body=output, content_type=CONTENT_TYPE_LATEST)
+    return web.Response(body=output, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
 async def health_handler(request):
