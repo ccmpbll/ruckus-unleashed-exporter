@@ -25,7 +25,6 @@ docker run -d \
 | `RUCKUS_PASSWORD` | Yes | — | Unleashed admin password |
 | `RUCKUS_USER` | Yes | — | Unleashed admin username |
 | `EXPORTER_PORT` | No | `9785` | Port to expose Prometheus metrics on |
-| `POLL_INTERVAL` | No | `60` | Seconds between data collection cycles |
 | `LOKI_URL` | No | — | Loki push endpoint (e.g. `http://loki:3100/loki/api/v1/push`). Leave unset to disable. |
 | `LOKI_JOB` | No | `ruckus_unleashed` | Job label applied to all Loki streams |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
@@ -45,12 +44,14 @@ docker run -d \
 
 ## Prometheus Scrape Config
 
+Each scrape triggers a live API call to the Unleashed controller. Set `scrape_timeout` high enough to cover the round trip — 30s is a safe default. `scrape_interval` controls how often metrics are collected.
+
 Add to your `prometheus.yml`:
 
 ```yaml
 scrape_configs:
   - job_name: ruckus-unleashed
-    scrape_interval: 65s
+    scrape_interval: 60s
     scrape_timeout: 30s
     static_configs:
       - targets:

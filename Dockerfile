@@ -14,7 +14,6 @@ ENV RUCKUS_USER=""
 
 # --- Exporter ---
 ENV EXPORTER_PORT="9785"
-ENV POLL_INTERVAL="60"
 
 # --- Loki (leave LOKI_URL empty to disable) ---
 ENV LOKI_URL=""
