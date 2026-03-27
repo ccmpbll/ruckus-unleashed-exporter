@@ -44,6 +44,7 @@ EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
 LOKI_URL = os.environ.get("LOKI_URL", "")
 LOKI_JOB = os.environ.get("LOKI_JOB", "ruckus_unleashed")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+DEBUG_DUMP = os.environ.get("DEBUG_DUMP", "").lower() in ("1", "true", "yes")
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
@@ -162,6 +163,8 @@ async def process_events(api):
     # --- Events ---
     try:
         all_events = await api.get_all_events(limit=100)
+        if DEBUG_DUMP and all_events:
+            log.info("DEBUG events[0]: %s", json.dumps(all_events[0], default=str)[:2000])
         new_events = []
         max_ts = _last_event_time
         for ev in all_events:
@@ -330,6 +333,8 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 sysinfo = await api.get_system_info(SystemStat.ALL)
+                if DEBUG_DUMP:
+                    log.info("DEBUG sysinfo keys: %s", json.dumps(sysinfo, default=str)[:2000])
                 identity = sysinfo.get("identity", {})
                 sys_stats = sysinfo.get("sysinfo", {})
 
@@ -351,6 +356,8 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 ap_stats_list = await api.get_ap_stats()
+                if DEBUG_DUMP and ap_stats_list:
+                    log.info("DEBUG ap_stats[0]: %s", json.dumps(ap_stats_list[0], default=str)[:2000])
                 ap_count = len(ap_stats_list)
                 total_clients = 0
 
@@ -409,6 +416,8 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 clients = await api.get_active_clients()
+                if DEBUG_DUMP and clients:
+                    log.info("DEBUG clients[0]: %s", json.dumps(clients[0], default=str)[:2000])
                 client_count = len(clients)
 
                 for cl in clients:
@@ -437,6 +446,8 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 vaps = await api.get_vap_stats()
+                if DEBUG_DUMP and vaps:
+                    log.info("DEBUG vaps[0]: %s", json.dumps(vaps[0], default=str)[:2000])
 
                 for vap in vaps:
                     v_ap = vap.get("ap-mac", vap.get("@ap-mac",

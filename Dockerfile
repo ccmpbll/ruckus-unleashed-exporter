@@ -22,6 +22,9 @@ ENV LOKI_JOB="ruckus_unleashed"
 # --- Logging: DEBUG, INFO, WARNING, ERROR ---
 ENV LOG_LEVEL="INFO"
 
+# --- Debug: set to 1 to dump raw API responses on first scrape ---
+ENV DEBUG_DUMP="0"
+
 WORKDIR /app
 
 COPY requirements.txt .
