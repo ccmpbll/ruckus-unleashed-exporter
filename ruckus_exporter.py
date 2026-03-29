@@ -73,6 +73,46 @@ _CLIENT_REDACT = {"wpa-passphrase"}
 # Fields stripped from AP records before storing in _debug_data
 _AP_REDACT = {"preSharedKey", "psk"}
 
+# Sensitive fields to redact from sysinfo, keyed by top-level section.
+# Each value is a set of field names within that section to replace with "[redacted]".
+_SYSINFO_REDACT: dict[str, set[str]] = {
+    "credential-reset":      {"security-email", "security-answer"},
+    "snmp":                  {"ro-community", "rw-community"},
+    "snmp-trap":             {"password"},
+    "tr069":                 {"rw-password", "ro-password", "op-password"},
+    "cluster":               {"password"},
+    "mesh-policy":           {"psk"},
+    "certificates":          {"pvt-key-passwd"},
+    "sci":                   {"scipassword"},
+    "aws-sns":               {"aws-sns-accesskey", "aws-sns-secretkey"},
+    "unleashed-network":     {"unleashed-network-token"},
+    "gdpr":                  {"passwd"},
+    "pubnub":                {"publish-key", "subscribe-key"},
+    "snmpv3-trapusr":        {"authPP", "privPP"},
+    "snmpv3-snmpusr":        {"authPP", "privPP"},
+}
+
+
+def _redact_sysinfo(sysinfo: dict) -> dict:
+    """Return a shallow-copy of sysinfo with sensitive nested fields replaced by '[redacted]'."""
+    result = dict(sysinfo)
+    for section, fields in _SYSINFO_REDACT.items():
+        if section not in result:
+            continue
+        original = result[section]
+        if isinstance(original, dict):
+            result[section] = {
+                k: ("[redacted]" if k in fields else v)
+                for k, v in original.items()
+            }
+        elif isinstance(original, list):
+            result[section] = [
+                {k: ("[redacted]" if k in fields else v) for k, v in item.items()}
+                if isinstance(item, dict) else item
+                for item in original
+            ]
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -237,7 +277,7 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 sysinfo = await api.get_system_info(SystemStat.ALL)
-                _debug_data["sysinfo"] = sysinfo
+                _debug_data["sysinfo"] = _redact_sysinfo(sysinfo)
                 identity = sysinfo.get("identity", {})
                 mgmt_ip = sysinfo.get("mgmt-ip", {})
                 sys_name = str(identity.get("name", ""))
