@@ -27,7 +27,6 @@ docker run -d \
 | `RUCKUS_USER` | Yes | — | Unleashed admin username |
 | `EXPORTER_PORT` | No | `9785` | Port to expose Prometheus metrics on |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity for exporter output: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `DEBUG_DUMP` | No | `0` | Set to `1` to log raw API responses on the first scrape. Useful for inspecting available fields. |
 
 ## Prometheus Scrape Config
 
@@ -50,6 +49,7 @@ scrape_configs:
 | Endpoint | Description |
 |---|---|
 | `/metrics` | Prometheus metrics |
+| `/debug` | Raw API response data from the last scrape (JSON). Sensitive fields (`wpa-passphrase`, `preSharedKey`, `psk`) are redacted. |
 
 ## Metrics
 

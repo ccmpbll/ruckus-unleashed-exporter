@@ -10,8 +10,11 @@ Environment Variables:
   RUCKUS_USER       - Unleashed admin username (required)
   RUCKUS_PASS       - Unleashed admin password (required)
   EXPORTER_PORT     - Prometheus metrics port (default: 9785)
-  LOG_LEVEL         - Logging level (default: INFO)
-  DEBUG_DUMP        - Set to 1 to log raw API responses on first scrape (default: 0)
+  LOG_LEVEL         - Logging level for exporter output (default: INFO)
+
+Endpoints:
+  /metrics          - Prometheus metrics
+  /debug            - Raw API response data from the last scrape (JSON)
 """
 
 import asyncio
@@ -40,7 +43,6 @@ RUCKUS_USER = os.environ.get("RUCKUS_USER", "")
 RUCKUS_PASS = os.environ.get("RUCKUS_PASS", "")
 EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
-DEBUG_DUMP = os.environ.get("DEBUG_DUMP", "").lower() in ("1", "true", "yes")
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
@@ -59,6 +61,17 @@ def _get_scrape_lock() -> asyncio.Lock:
     if _scrape_lock is None:
         _scrape_lock = asyncio.Lock()
     return _scrape_lock
+
+
+# ---------------------------------------------------------------------------
+# Debug data cache (replaced on every metrics scrape)
+# ---------------------------------------------------------------------------
+_debug_data: dict = {}
+
+# Fields stripped from client records before storing in _debug_data
+_CLIENT_REDACT = {"wpa-passphrase"}
+# Fields stripped from AP records before storing in _debug_data
+_AP_REDACT = {"preSharedKey", "psk"}
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +237,7 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 sysinfo = await api.get_system_info(SystemStat.ALL)
-                if DEBUG_DUMP:
-                    log.info("DEBUG sysinfo identity: %s", json.dumps(sysinfo.get("identity", {}), default=str))
-                    log.info("DEBUG sysinfo mgmt-ip: %s", json.dumps(sysinfo.get("mgmt-ip", {}), default=str))
+                _debug_data["sysinfo"] = sysinfo
                 identity = sysinfo.get("identity", {})
                 mgmt_ip = sysinfo.get("mgmt-ip", {})
                 sys_name = str(identity.get("name", ""))
@@ -242,13 +253,10 @@ async def collect_metrics() -> bytes:
             try:
                 ap_stats_list = await api.get_ap_stats()
                 ap_count = len(ap_stats_list)
-
-                if DEBUG_DUMP and ap_stats_list:
-                    ap0 = ap_stats_list[0]
-                    top = {k: v for k, v in ap0.items() if not isinstance(v, (list, dict))}
-                    log.info("DEBUG ap_stats[0] top-level: %s", json.dumps(top, default=str))
-                    for i, r in enumerate(ap0.get("radio", [])):
-                        log.info("DEBUG ap_stats[0] radio[%d]: %s", i, json.dumps(r, default=str))
+                _debug_data["ap_stats"] = [
+                    {k: v for k, v in ap.items() if k not in _AP_REDACT}
+                    for ap in ap_stats_list
+                ]
 
                 master_ap = next(
                     (ap for ap in ap_stats_list if ap.get("role") == "master"),
@@ -367,9 +375,10 @@ async def collect_metrics() -> bytes:
             try:
                 clients = await api.get_active_clients()
                 client_count = len(clients)
-
-                if DEBUG_DUMP and clients:
-                    log.info("DEBUG clients[0]: %s", json.dumps(clients[0], default=str))
+                _debug_data["clients"] = [
+                    {k: v for k, v in cl.items() if k not in _CLIENT_REDACT}
+                    for cl in clients
+                ]
 
                 for cl in clients:
                     cl_mac = cl.get("mac", "unknown")
@@ -396,10 +405,7 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             try:
                 vaps = await api.get_vap_stats()
-
-                if DEBUG_DUMP and vaps:
-                    for i, v in enumerate(vaps):
-                        log.info("DEBUG vaps[%d]: %s", i, json.dumps(v, default=str))
+                _debug_data["vaps"] = vaps
 
                 for vap in vaps:
                     v_ap = vap.get("ap", "unknown")
@@ -446,6 +452,7 @@ async def collect_metrics() -> bytes:
 
     duration = time.monotonic() - start
     scrape_duration.set(duration)
+    _debug_data["scraped_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     log.info("Scrape complete in %.1fs — APs=%d clients=%d", duration, ap_count, client_count)
 
     return generate_latest(registry)
@@ -459,6 +466,15 @@ async def metrics_handler(request):
     async with _get_scrape_lock():
         output = await collect_metrics()
     return web.Response(body=output, headers={"Content-Type": CONTENT_TYPE_LATEST})
+
+
+async def debug_handler(request):
+    if not _debug_data:
+        return web.Response(text="No data yet — waiting for first scrape", status=503)
+    return web.Response(
+        text=json.dumps(_debug_data, indent=2, default=str),
+        content_type="application/json",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +492,7 @@ async def main():
 
     app = web.Application()
     app.router.add_get("/metrics", metrics_handler)
+    app.router.add_get("/debug", debug_handler)
 
     runner = web.AppRunner(app)
     await runner.setup()
