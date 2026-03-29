@@ -398,7 +398,8 @@ async def collect_metrics() -> bytes:
                 vaps = await api.get_vap_stats()
 
                 if DEBUG_DUMP and vaps:
-                    log.info("DEBUG vaps[0]: %s", json.dumps(vaps[0], default=str))
+                    for i, v in enumerate(vaps):
+                        log.info("DEBUG vaps[%d]: %s", i, json.dumps(v, default=str))
 
                 for vap in vaps:
                     v_ap = vap.get("ap", "unknown")
