@@ -199,6 +199,8 @@ async def collect_metrics() -> bytes:
                             ["ap_mac", "ap_name"], registry=registry)
     ap_lan_tx_bytes = Gauge("ruckus_ap_lan_tx_bytes_total", "Total cumulative AP LAN interface TX bytes",
                             ["ap_mac", "ap_name"], registry=registry)
+    ap_rogue = Gauge("ruckus_ap_rogue_count", "Number of rogue APs detected on the LAN by this AP",
+                     ["ap_mac", "ap_name"], registry=registry)
 
     # -- Per-radio --
     radio_clients = Gauge("ruckus_radio_client_count", "Clients on this radio",
@@ -233,6 +235,13 @@ async def collect_metrics() -> bytes:
                                  ["ap_mac", "ap_name", "radio_band"], registry=registry)
     radio_disassoc_abnormal = Gauge("ruckus_radio_disassoc_abnormal_total", "Cumulative abnormal client disassociations on this radio",
                                     ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_rx_packets = Gauge("ruckus_radio_rx_packets_total", "Radio cumulative RX packet count",
+                             ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_rx_decrypt_errors = Gauge("ruckus_radio_rx_decrypt_errors_total",
+                                    "Cumulative RX decryption errors on this radio — non-zero values indicate clients with wrong credentials or potential deauth attacks",
+                                    ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_auth_failures = Gauge("ruckus_radio_auth_failures_total", "Cumulative client authentication failures on this radio",
+                                ["ap_mac", "ap_name", "radio_band"], registry=registry)
 
     # -- Per-client --
     client_rssi = Gauge("ruckus_client_rssi_dbm", "Client signal strength in dBm",
@@ -241,6 +250,8 @@ async def collect_metrics() -> bytes:
                                ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
     client_snr = Gauge("ruckus_client_snr_db", "Client signal-to-noise ratio in dB",
                        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_protocol_info = Info("ruckus_client_protocol", "Per-client negotiated protocol and connection attributes",
+                                ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
 
     # -- Per-VAP --
     vap_clients = Gauge("ruckus_vap_client_count", "Clients on this VAP",
@@ -261,6 +272,8 @@ async def collect_metrics() -> bytes:
                              ["ap_mac", "ssid", "radio_band"], registry=registry)
     vap_rx_drop_pkts = Gauge("ruckus_vap_rx_drop_packets_total", "Cumulative RX drop packet count on this VAP",
                              ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_status = Gauge("ruckus_vap_status", "VAP operational status (1=Up, 0=Down)",
+                       ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry)
 
     start = time.monotonic()
     ap_count = 0
@@ -330,6 +343,7 @@ async def collect_metrics() -> bytes:
                     ap_uptime.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("uptime", 0)))
                     ap_lan_rx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_rx_byte", 0)))
                     ap_lan_tx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_tx_byte", 0)))
+                    ap_rogue.labels(ap_mac=mac, ap_name=name).set(_safe_int(ap.get("num-rogue", 0)))
                     reboot_reasons = {
                         "application":  "application-reboot-counter",
                         "user":         "user-reboot-counter",
@@ -402,6 +416,15 @@ async def collect_metrics() -> bytes:
                         radio_disassoc_abnormal.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
                             _safe_int(radio.get("mgmt-disassoc-abnormal", 0))
                         )
+                        radio_rx_packets.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("radio-total-rx-pkts", 0))
+                        )
+                        radio_rx_decrypt_errors.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("radio-total-rx-decrypt-error", 0))
+                        )
+                        radio_auth_failures.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_int(radio.get("mgmt-auth-fail", 0))
+                        )
 
                 system_num_ap.set(ap_count)
                 system_num_clients.set(total_clients)
@@ -436,6 +459,14 @@ async def collect_metrics() -> bytes:
                     client_noise_floor.labels(**labels).set(nf_val)
                     if rssi_val != 0 and nf_val != 0:
                         client_snr.labels(**labels).set(rssi_val - nf_val)
+                    client_protocol_info.labels(**labels).info({
+                        "ieee80211_radio_type": str(cl.get("ieee80211-radio-type", "")),
+                        "encryption":           str(cl.get("encryption", "")),
+                        "auth_method":          str(cl.get("auth-method", "")),
+                        "vlan":                 str(cl.get("vlan", "")),
+                        "rssi_level":           str(cl.get("rssi-level", "")),
+                        "health_level":         str(cl.get("display-health-level", "")),
+                    })
 
             except Exception as e:
                 log.error("Error collecting client stats: %s", e)
@@ -479,6 +510,9 @@ async def collect_metrics() -> bytes:
                     )
                     vap_rx_drop_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
                         _safe_int(vap.get("rx-drop-pkt", 0))
+                    )
+                    vap_status.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band, bssid=v_bssid).set(
+                        1 if vap.get("vap-up", "") == "Up" else 0
                     )
 
             except Exception as e:

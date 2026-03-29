@@ -73,6 +73,7 @@ scrape_configs:
 | `ruckus_ap_lan_rx_bytes_total` | `ap_mac`, `ap_name` | Total cumulative LAN interface RX bytes |
 | `ruckus_ap_lan_tx_bytes_total` | `ap_mac`, `ap_name` | Total cumulative LAN interface TX bytes |
 | `ruckus_ap_reboot_total` | `ap_mac`, `ap_name`, `reason` | Cumulative reboot count by reason (`application`, `user`, `reset_button`, `kernel_panic`, `watchdog`, `powercycle`) |
+| `ruckus_ap_rogue_count` | `ap_mac`, `ap_name` | Number of rogue APs detected on the LAN by this AP |
 
 ### Per-Radio
 
@@ -94,6 +95,9 @@ scrape_configs:
 | `ruckus_radio_channel_width_mhz` | `ap_mac`, `ap_name`, `radio_band` | Channel width in MHz |
 | `ruckus_radio_assoc_failures_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative client association failures |
 | `ruckus_radio_disassoc_abnormal_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative abnormal client disassociations |
+| `ruckus_radio_rx_packets_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative RX packet count |
+| `ruckus_radio_rx_decrypt_errors_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative RX decryption errors (non-zero may indicate wrong credentials or deauth attacks) |
+| `ruckus_radio_auth_failures_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative client authentication failures |
 
 ### Per-Client
 
@@ -102,6 +106,7 @@ scrape_configs:
 | `ruckus_client_rssi_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal strength in dBm |
 | `ruckus_client_noise_floor_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Noise floor in dBm |
 | `ruckus_client_snr_db` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal-to-noise ratio in dB (only set when both RSSI and noise floor are non-zero) |
+| `ruckus_client_protocol_info` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Per-client negotiated protocol and connection attributes: `ieee80211_radio_type`, `encryption`, `auth_method`, `vlan`, `rssi_level`, `health_level` |
 
 ### Per-VAP (SSID)
 
@@ -116,6 +121,7 @@ scrape_configs:
 | `ruckus_vap_rx_errors_total` | `ap_mac`, `ssid`, `radio_band` | RX errors |
 | `ruckus_vap_tx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative TX data drop packet count |
 | `ruckus_vap_rx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative RX drop packet count |
+| `ruckus_vap_status` | `ap_mac`, `ssid`, `radio_band`, `bssid` | VAP operational status (1=Up, 0=Down) |
 
 ## Known Potential Issues
 
