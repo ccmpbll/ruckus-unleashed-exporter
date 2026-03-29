@@ -343,7 +343,7 @@ async def collect_metrics() -> bytes:
                             _safe_int(radio.get("radio-total-tx-fail", 0))
                         )
                         radio_avg_rssi.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("avg-rssi", 0))
+                            -_safe_float(radio.get("avg-rssi", 0))
                         )
                         radio_channel_width.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
                             _safe_int(radio.get("channelization", 0))
