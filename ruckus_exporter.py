@@ -134,15 +134,17 @@ async def collect_metrics() -> bytes:
     system_num_clients = Gauge("ruckus_system_client_count", "Number of connected clients", registry=registry)
 
     # -- Per-AP --
+    ap_reboot = Gauge("ruckus_ap_reboot_total", "Cumulative AP reboot count by reason",
+                      ["ap_mac", "ap_name", "reason"], registry=registry)
     ap_status = Gauge("ruckus_ap_status", "AP connection status (1=connected)",
                       ["ap_mac", "ap_name", "ap_model"], registry=registry)
     ap_clients = Gauge("ruckus_ap_client_count", "Clients connected to this AP",
                        ["ap_mac", "ap_name"], registry=registry)
     ap_uptime = Gauge("ruckus_ap_uptime_seconds", "AP uptime in seconds",
                       ["ap_mac", "ap_name"], registry=registry)
-    ap_lan_rx_bytes = Gauge("ruckus_ap_lan_rx_bytes", "AP LAN interface RX bytes",
+    ap_lan_rx_bytes = Gauge("ruckus_ap_lan_rx_bytes_total", "Total cumulative AP LAN interface RX bytes",
                             ["ap_mac", "ap_name"], registry=registry)
-    ap_lan_tx_bytes = Gauge("ruckus_ap_lan_tx_bytes", "AP LAN interface TX bytes",
+    ap_lan_tx_bytes = Gauge("ruckus_ap_lan_tx_bytes_total", "Total cumulative AP LAN interface TX bytes",
                             ["ap_mac", "ap_name"], registry=registry)
 
     # -- Per-radio --
@@ -160,25 +162,39 @@ async def collect_metrics() -> bytes:
                              ["ap_mac", "ap_name", "radio_band"], registry=registry)
     radio_airtime_tx = Gauge("ruckus_radio_airtime_tx_percent", "Airtime TX %",
                              ["ap_mac", "ap_name", "radio_band"], registry=registry)
-    radio_tx_bytes = Gauge("ruckus_radio_tx_bytes", "Radio total TX bytes",
+    radio_tx_bytes = Gauge("ruckus_radio_tx_bytes_total", "Total cumulative radio TX bytes",
                            ["ap_mac", "ap_name", "radio_band"], registry=registry)
-    radio_rx_bytes = Gauge("ruckus_radio_rx_bytes", "Radio total RX bytes",
+    radio_rx_bytes = Gauge("ruckus_radio_rx_bytes_total", "Total cumulative radio RX bytes",
                            ["ap_mac", "ap_name", "radio_band"], registry=registry)
     radio_tx_retries = Gauge("ruckus_radio_tx_retries_total", "Radio TX retries",
                              ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_tx_packets = Gauge("ruckus_radio_tx_packets_total", "Radio cumulative TX packet count",
+                             ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_tx_failures = Gauge("ruckus_radio_tx_failures_total", "Radio cumulative TX failure count (distinct from retries)",
+                              ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_avg_rssi = Gauge("ruckus_radio_avg_rssi_dbm", "Average RSSI of all associated clients on this radio in dBm",
+                           ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_channel_width = Gauge("ruckus_radio_channel_width_mhz", "Radio channel width in MHz",
+                                ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_assoc_failures = Gauge("ruckus_radio_assoc_failures_total", "Cumulative client association failures on this radio",
+                                 ["ap_mac", "ap_name", "radio_band"], registry=registry)
+    radio_disassoc_abnormal = Gauge("ruckus_radio_disassoc_abnormal_total", "Cumulative abnormal client disassociations on this radio",
+                                    ["ap_mac", "ap_name", "radio_band"], registry=registry)
 
     # -- Per-client --
     client_rssi = Gauge("ruckus_client_rssi_dbm", "Client signal strength in dBm",
                         ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
     client_noise_floor = Gauge("ruckus_client_noise_floor_dbm", "Client noise floor in dBm",
                                ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_snr = Gauge("ruckus_client_snr_db", "Client signal-to-noise ratio in dB",
+                       ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
 
     # -- Per-VAP --
     vap_clients = Gauge("ruckus_vap_client_count", "Clients on this VAP",
                         ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry)
-    vap_tx_bytes = Gauge("ruckus_vap_tx_bytes", "VAP TX bytes",
+    vap_tx_bytes = Gauge("ruckus_vap_tx_bytes_total", "Total cumulative VAP TX bytes",
                          ["ap_mac", "ssid", "radio_band"], registry=registry)
-    vap_rx_bytes = Gauge("ruckus_vap_rx_bytes", "VAP RX bytes",
+    vap_rx_bytes = Gauge("ruckus_vap_rx_bytes_total", "Total cumulative VAP RX bytes",
                          ["ap_mac", "ssid", "radio_band"], registry=registry)
     vap_tx_pkts = Gauge("ruckus_vap_tx_packets_total", "VAP TX packets",
                         ["ap_mac", "ssid", "radio_band"], registry=registry)
@@ -188,6 +204,10 @@ async def collect_metrics() -> bytes:
                           ["ap_mac", "ssid", "radio_band"], registry=registry)
     vap_rx_errors = Gauge("ruckus_vap_rx_errors_total", "VAP RX errors",
                           ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_tx_drop_pkts = Gauge("ruckus_vap_tx_drop_packets_total", "Cumulative TX data drop packet count on this VAP",
+                             ["ap_mac", "ssid", "radio_band"], registry=registry)
+    vap_rx_drop_pkts = Gauge("ruckus_vap_rx_drop_packets_total", "Cumulative RX drop packet count on this VAP",
+                             ["ap_mac", "ssid", "radio_band"], registry=registry)
 
     start = time.monotonic()
     ap_count = 0
@@ -262,6 +282,18 @@ async def collect_metrics() -> bytes:
                     ap_uptime.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("uptime", 0)))
                     ap_lan_rx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_rx_byte", 0)))
                     ap_lan_tx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_tx_byte", 0)))
+                    reboot_reasons = {
+                        "application":  "application-reboot-counter",
+                        "user":         "user-reboot-counter",
+                        "reset_button": "reset-button-reboot-counter",
+                        "kernel_panic": "kernel-panic-reboot-counter",
+                        "watchdog":     "watchdog-reboot-counter",
+                        "powercycle":   "powercycle-reboot-counter",
+                    }
+                    for reason, field in reboot_reasons.items():
+                        ap_reboot.labels(ap_mac=mac, ap_name=name, reason=reason).set(
+                            _safe_int(ap.get(field, 0))
+                        )
                     total_clients += ap_client_count
 
                     radios = ap.get("radio", [])
@@ -304,6 +336,24 @@ async def collect_metrics() -> bytes:
                         radio_tx_retries.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
                             _safe_float(radio.get("radio-total-retries", 0))
                         )
+                        radio_tx_packets.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_int(radio.get("radio-total-tx-pkts", 0))
+                        )
+                        radio_tx_failures.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_int(radio.get("radio-total-tx-fail", 0))
+                        )
+                        radio_avg_rssi.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_float(radio.get("avg-rssi", 0))
+                        )
+                        radio_channel_width.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_int(radio.get("channelization", 0))
+                        )
+                        radio_assoc_failures.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_int(radio.get("mgmt-assoc-fail", 0))
+                        )
+                        radio_disassoc_abnormal.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
+                            _safe_int(radio.get("mgmt-disassoc-abnormal", 0))
+                        )
 
                 system_num_ap.set(ap_count)
                 system_num_clients.set(total_clients)
@@ -331,12 +381,12 @@ async def collect_metrics() -> bytes:
                     labels = dict(client_mac=cl_mac, client_name=cl_name,
                                   ap_mac=cl_ap, ssid=cl_ssid, radio_band=cl_band)
 
-                    client_rssi.labels(**labels).set(
-                        _safe_float(cl.get("received-signal-strength", 0))
-                    )
-                    client_noise_floor.labels(**labels).set(
-                        _safe_float(cl.get("noise-floor", 0))
-                    )
+                    rssi_val = _safe_float(cl.get("received-signal-strength", 0))
+                    nf_val = _safe_float(cl.get("noise-floor", 0))
+                    client_rssi.labels(**labels).set(rssi_val)
+                    client_noise_floor.labels(**labels).set(nf_val)
+                    if rssi_val != 0 and nf_val != 0:
+                        client_snr.labels(**labels).set(rssi_val - nf_val)
 
             except Exception as e:
                 log.error("Error collecting client stats: %s", e)
@@ -376,6 +426,12 @@ async def collect_metrics() -> bytes:
                     )
                     vap_rx_errors.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
                         _safe_float(vap.get("rx-errors", 0))
+                    )
+                    vap_tx_drop_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
+                        _safe_int(vap.get("tx-data-drop-pkts", 0))
+                    )
+                    vap_rx_drop_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
+                        _safe_int(vap.get("rx-drop-pkt", 0))
                     )
 
             except Exception as e:
