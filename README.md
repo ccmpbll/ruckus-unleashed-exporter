@@ -124,6 +124,8 @@ scrape_configs:
 
 - **`ruckus_radio_phy_errors_total` is not a true monotonic counter**: Despite the `_total` suffix, PHY error values appear to reflect a rolling measurement window rather than a cumulative count since boot. Values may decrease between scrapes. This is a limitation of what the Unleashed API exposes.
 
+- **`ruckus_vap_tx_drop_packets_total` mirrors `ruckus_vap_tx_errors_total`**: The underlying API fields `tx-data-drop-pkts` and `tx-errors` return identical values and increment together. They appear to be the same counter exposed under two names. Both metrics are retained for completeness but should be treated as equivalent.
+
 ## Tested On
 
 - Ruckus R850, Unleashed 200.18.7.101.244
