@@ -106,7 +106,7 @@ scrape_configs:
 | `ruckus_client_rssi_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal strength in dBm |
 | `ruckus_client_noise_floor_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Noise floor in dBm |
 | `ruckus_client_snr_db` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal-to-noise ratio in dB (only set when both RSSI and noise floor are non-zero) |
-| `ruckus_client_protocol_info` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Per-client negotiated protocol and connection attributes: `ieee80211_radio_type`, `encryption`, `auth_method`, `vlan`, `rssi_level`, `health_level` |
+| `ruckus_client_protocol_info` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Per-client negotiated protocol and connection attributes: `ieee80211_radio_type`, `encryption`, `auth_method`, `vlan`, `rssi_level`, `health_level`, `ip`, `ipv6`, `device_type`, `model`, `channelization`, `channel` |
 
 ### Per-VAP (SSID)
 
@@ -122,6 +122,56 @@ scrape_configs:
 | `ruckus_vap_tx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative TX data drop packet count |
 | `ruckus_vap_rx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative RX drop packet count |
 | `ruckus_vap_status` | `ap_mac`, `ssid`, `radio_band`, `bssid` | VAP operational status (1=Up, 0=Down) |
+
+## Grafana Dashboard
+
+A pre-built dashboard is available at [`dashboards/ruckus-unleashed.json`](dashboards/ruckus-unleashed.json). Import it via **Dashboards → Import** in Grafana and select your Prometheus datasource when prompted.
+
+### Overview Row
+
+| Panel | Description |
+|---|---|
+| AP Status | Per-AP up/down status with green/red background |
+| Connected Clients | Total client count — green below 50, yellow at 50+ |
+| Master AP CPU | CPU utilisation % with green/yellow/red thresholds |
+| Master AP Memory | Memory utilisation % with green/yellow/red thresholds |
+| Rogue APs Detected | Per-AP rogue count — green at 0, orange at 1+, red at 5+ |
+| AP Uptime | Per-AP uptime formatted as days/hours/minutes |
+| Total APs | Count of APs currently reporting metrics |
+| Scrape | Last scrape status (OK/FAIL) and duration |
+
+### Radio Performance Row
+
+| Panel | Description |
+|---|---|
+| Channel Utilization % | Airtime busy % per radio band over time |
+| Radio Throughput | TX/RX bytes per second per radio band |
+| Radio Packet Rate | TX/RX packets per second per radio band |
+| Avg Client RSSI | Average client signal strength per radio band over time |
+
+### Radio Health Row
+
+| Panel | Description |
+|---|---|
+| TX Errors & Retries | TX retry and failure rates per radio band |
+| RX Decrypt Errors & Auth Failures | Decrypt errors and auth failures per radio band — elevated values may indicate credential issues or deauth attacks |
+| Abnormal Disassociations & PHY Errors | Abnormal disassoc and PHY error rates per radio band |
+
+### VAP / SSID Row
+
+| Panel | Description |
+|---|---|
+| Clients per VAP | Instant client count per SSID and band |
+| VAP Throughput | TX/RX bytes per second per SSID |
+| VAP TX Errors | TX and RX error rates per SSID |
+
+### Connected Clients Row
+
+| Panel | Description |
+|---|---|
+| Clients by Band | Pie chart — client count split by 2.4GHz vs 5GHz |
+| Clients by Wi-Fi Protocol | Pie chart — client count grouped by 802.11 protocol (802.11n, 802.11ac, etc.) |
+| Client Detail | Per-client table showing: Client, MAC, IP, SSID, Band, Channel, Width, RSSI, SNR, Protocol, Encryption, Auth, Device Type, Model, Signal Level, Health, VLAN, IPv6 |
 
 ## Known Potential Issues
 

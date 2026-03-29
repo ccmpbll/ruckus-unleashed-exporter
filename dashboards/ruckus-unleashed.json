@@ -1,0 +1,726 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__elements": {},
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "9.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "bargauge",
+      "name": "Bar gauge",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Ruckus Unleashed access point metrics via ruckus-unleashed-exporter",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+
+    { "id": 1, "type": "stat", "title": "AP Status",
+      "gridPos": {"h": 4, "w": 3, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto", "textMode": "auto", "colorMode": "background",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        },
+        "overrides": []
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_ap_status", "instant": true, "legendFormat": "{{ap_name}}", "refId": "A"}]
+    },
+
+    { "id": 2, "type": "stat", "title": "Connected Clients",
+      "gridPos": {"h": 4, "w": 3, "x": 3, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto", "textMode": "auto", "colorMode": "background",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}]},
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_system_client_count", "legendFormat": "Clients", "refId": "A"}]
+    },
+
+    { "id": 3, "type": "stat", "title": "Master AP CPU",
+      "gridPos": {"h": 4, "w": 3, "x": 6, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto", "textMode": "auto", "colorMode": "background",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]},
+          "unit": "percent", "min": 0, "max": 100
+        },
+        "overrides": []
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_system_cpu_percent", "legendFormat": "CPU", "refId": "A"}]
+    },
+
+    { "id": 4, "type": "stat", "title": "Master AP Memory",
+      "gridPos": {"h": 4, "w": 3, "x": 9, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto", "textMode": "auto", "colorMode": "background",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 75}, {"color": "red", "value": 90}]},
+          "unit": "percent", "min": 0, "max": 100
+        },
+        "overrides": []
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_system_memory_percent", "legendFormat": "Memory", "refId": "A"}]
+    },
+
+    { "id": 5, "type": "stat", "title": "AP Uptime",
+      "gridPos": {"h": 4, "w": 3, "x": 15, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto", "textMode": "auto", "colorMode": "value",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "fixed", "fixedColor": "text"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_ap_uptime_seconds", "instant": true, "legendFormat": "{{ap_name}}", "refId": "A"}]
+    },
+
+    { "id": 8, "type": "stat", "title": "Total APs",
+      "gridPos": {"h": 4, "w": 3, "x": 18, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto", "textMode": "auto", "colorMode": "value",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "fixed", "fixedColor": "text"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "count(ruckus_ap_status)", "instant": true, "legendFormat": "APs", "refId": "A"}]
+    },
+
+    { "id": 6, "type": "stat", "title": "Rogue APs Detected",
+      "gridPos": {"h": 4, "w": 3, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "auto", "textMode": "auto", "colorMode": "background",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}
+        },
+        "overrides": []
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_ap_rogue_count", "instant": true, "legendFormat": "Rogues", "refId": "A"}]
+    },
+
+    { "id": 7, "type": "stat", "title": "Scrape",
+      "gridPos": {"h": 4, "w": 3, "x": 21, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "vertical", "textMode": "auto", "colorMode": "background",
+        "graphMode": "none", "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "FAIL"}, "1": {"text": "OK"}}}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]},
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Duration"},
+            "properties": [
+              {"id": "unit", "value": "s"},
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "text"}},
+              {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}}
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_scrape_success", "legendFormat": "Status", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_scrape_duration_seconds", "legendFormat": "Duration", "refId": "B"}
+      ]
+    },
+
+    { "id": 10, "type": "row", "title": "Radio Performance",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 4}
+    },
+
+    { "id": 11, "type": "timeseries", "title": "Channel Utilization %",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 15, "gradientMode": "opacity", "showPoints": "never",
+            "spanNulls": false, "stacking": {"mode": "none"}
+          },
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_channel_utilization_percent", "legendFormat": "{{radio_band}} Busy", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_airtime_tx_percent", "legendFormat": "{{radio_band}} TX Airtime", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_airtime_rx_percent", "legendFormat": "{{radio_band}} RX Airtime", "refId": "C"}
+      ]
+    },
+
+    { "id": 12, "type": "timeseries", "title": "Radio Throughput",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "gradientMode": "opacity", "showPoints": "never", "spanNulls": false
+          },
+          "unit": "Bps",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_tx_bytes_total[5m])", "legendFormat": "{{radio_band}} TX", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_rx_bytes_total[5m])", "legendFormat": "{{radio_band}} RX", "refId": "B"}
+      ]
+    },
+
+    { "id": 13, "type": "timeseries", "title": "Radio Packet Rate",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "gradientMode": "none", "showPoints": "never", "spanNulls": false
+          },
+          "unit": "pps",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_tx_packets_total[5m])", "legendFormat": "{{radio_band}} TX", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_rx_packets_total[5m])", "legendFormat": "{{radio_band}} RX", "refId": "B"}
+      ]
+    },
+
+    { "id": 14, "type": "timeseries", "title": "Avg Client RSSI",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "none"},
+        "legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "showPoints": "never", "spanNulls": false
+          },
+          "unit": "dBm",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_avg_rssi_dbm", "legendFormat": "{{radio_band}}", "refId": "A"}
+      ]
+    },
+
+    { "id": 20, "type": "row", "title": "Radio Health",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21}
+    },
+
+    { "id": 21, "type": "timeseries", "title": "TX Retries & Failures",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 22},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "showPoints": "never", "spanNulls": false
+          },
+          "unit": "ops",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_tx_retries_total[5m])", "legendFormat": "{{radio_band}} Retries", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_tx_failures_total[5m])", "legendFormat": "{{radio_band}} Failures", "refId": "B"}
+      ]
+    },
+
+    { "id": 22, "type": "timeseries", "title": "Security Events",
+      "description": "Non-zero decrypt errors may indicate clients with wrong credentials or deauth attacks.",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 22},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "showPoints": "never", "spanNulls": false
+          },
+          "unit": "ops",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_rx_decrypt_errors_total[5m])", "legendFormat": "{{radio_band}} Decrypt Errors", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_auth_failures_total[5m])", "legendFormat": "{{radio_band}} Auth Failures", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_assoc_failures_total[5m])", "legendFormat": "{{radio_band}} Assoc Failures", "refId": "C"}
+      ]
+    },
+
+    { "id": 23, "type": "timeseries", "title": "Abnormal Disassociations & PHY Errors",
+      "description": "PHY errors reflect a rolling window, not a true cumulative counter.",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 22},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "showPoints": "never", "spanNulls": false
+          },
+          "unit": "ops",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byFrameRefID", "options": "B"},
+            "properties": [{"id": "unit", "value": "none"}]
+          }
+        ]
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_radio_disassoc_abnormal_total[5m])", "legendFormat": "{{radio_band}} Abnormal Disassoc", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_phy_errors_total", "legendFormat": "{{radio_band}} PHY Errors", "refId": "B"}
+      ]
+    },
+
+    { "id": 30, "type": "row", "title": "VAP / SSID",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30}
+    },
+
+    { "id": 31, "type": "bargauge", "title": "Clients per VAP",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 31},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": true},
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "none", "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_vap_client_count", "instant": true, "legendFormat": "{{ssid}} ({{radio_band}})", "refId": "A"}
+      ]
+    },
+
+    { "id": 32, "type": "timeseries", "title": "VAP Throughput",
+      "gridPos": {"h": 8, "w": 12, "x": 6, "y": 31},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "showPoints": "never", "spanNulls": false
+          },
+          "unit": "Bps",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_vap_tx_bytes_total[5m])", "legendFormat": "{{ssid}} {{radio_band}} TX", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_vap_rx_bytes_total[5m])", "legendFormat": "{{ssid}} {{radio_band}} RX", "refId": "B"}
+      ]
+    },
+
+    { "id": 33, "type": "timeseries", "title": "VAP TX Errors",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 31},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "showPoints": "never", "spanNulls": false
+          },
+          "unit": "ops",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_vap_tx_errors_total[5m])", "legendFormat": "{{ssid}} TX Errors", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "rate(ruckus_vap_rx_errors_total[5m])", "legendFormat": "{{ssid}} RX Errors", "refId": "B"}
+      ]
+    },
+
+    { "id": 40, "type": "row", "title": "Connected Clients",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 39}
+    },
+
+    { "id": 43, "type": "piechart", "title": "Clients by Band",
+      "description": "Count of currently connected clients grouped by radio band.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "pieType": "pie",
+        "tooltip": {"mode": "single", "sort": "none"},
+        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"hideFrom": {"legend": false, "tooltip": false, "viz": false}},
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "count by (radio_band) (ruckus_client_rssi_dbm)",
+          "instant": true,
+          "legendFormat": "{{radio_band}}",
+          "refId": "A"
+        }
+      ]
+    },
+
+    { "id": 42, "type": "piechart", "title": "Clients by Wi-Fi Protocol",
+      "description": "Count of currently connected clients grouped by negotiated 802.11 protocol.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "pieType": "pie",
+        "tooltip": {"mode": "single", "sort": "none"},
+        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"hideFrom": {"legend": false, "tooltip": false, "viz": false}},
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "count by (ieee80211_radio_type) (ruckus_client_protocol_info)",
+          "instant": true,
+          "legendFormat": "{{ieee80211_radio_type}}",
+          "refId": "A"
+        }
+      ]
+    },
+
+    { "id": 41, "type": "table", "title": "Client Detail",
+      "description": "Instant snapshot. RSSI and SNR columns use color thresholds. Protocol info joined via group_left().",
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 49},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
+        "showHeader": true,
+        "sortBy": [{"desc": false, "displayName": "client_name"}]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {"align": "auto", "displayMode": "auto", "inspect": false},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "RSSI (dBm)"},
+            "properties": [
+              {"id": "unit", "value": "dBm"},
+              {"id": "custom.displayMode", "value": "color-background"},
+              {"id": "thresholds", "value": {"mode": "absolute", "steps": [
+                {"color": "red", "value": null},
+                {"color": "orange", "value": -80},
+                {"color": "yellow", "value": -70},
+                {"color": "green", "value": -60}
+              ]}}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "SNR (dB)"},
+            "properties": [
+              {"id": "unit", "value": "dB"},
+              {"id": "custom.displayMode", "value": "color-background"},
+              {"id": "thresholds", "value": {"mode": "absolute", "steps": [
+                {"color": "red", "value": null},
+                {"color": "orange", "value": 10},
+                {"color": "yellow", "value": 20},
+                {"color": "green", "value": 30}
+              ]}}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Time"},
+            "properties": [{"id": "custom.hidden", "value": true}]
+          }
+        ]
+      },
+      "transformations": [
+        {"id": "merge", "options": {}},
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "__name__": true,
+              "ap_mac": true,
+              "instance": true,
+              "job": true,
+              "client_mac": false
+            },
+            "indexByName": {
+              "client_name": 0,
+              "client_mac": 1,
+              "ip": 2,
+              "ssid": 3,
+              "radio_band": 4,
+              "channel": 5,
+              "channelization": 6,
+              "Value #A": 7,
+              "Value #B": 8,
+              "ieee80211_radio_type": 9,
+              "encryption": 10,
+              "auth_method": 11,
+              "device_type": 12,
+              "model": 13,
+              "rssi_level": 14,
+              "health_level": 15,
+              "vlan": 16,
+              "ipv6": 17
+            },
+            "renameByName": {
+              "client_name": "Client",
+              "client_mac": "MAC",
+              "ip": "IP",
+              "ipv6": "IPv6",
+              "ssid": "SSID",
+              "radio_band": "Band",
+              "channel": "Channel",
+              "channelization": "Width",
+              "Value #A": "RSSI (dBm)",
+              "Value #B": "SNR (dB)",
+              "ieee80211_radio_type": "Protocol",
+              "encryption": "Encryption",
+              "auth_method": "Auth",
+              "device_type": "Device Type",
+              "model": "Model",
+              "rssi_level": "Signal",
+              "health_level": "Health",
+              "vlan": "VLAN"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "ruckus_client_rssi_dbm * on(client_mac, client_name, ap_mac, ssid, radio_band) group_left(encryption, auth_method, ieee80211_radio_type, rssi_level, health_level, vlan, ip, ipv6, device_type, model, channelization, channel) ruckus_client_protocol_info",
+          "format": "table", "instant": true, "legendFormat": "", "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "ruckus_client_snr_db * on(client_mac, client_name, ap_mac, ssid, radio_band) group_left(encryption, auth_method, ieee80211_radio_type, rssi_level, health_level, vlan, ip, ipv6, device_type, model, channelization, channel) ruckus_client_protocol_info",
+          "format": "table", "instant": true, "legendFormat": "", "refId": "B"
+        }
+      ]
+    }
+
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["ruckus", "wifi", "networking"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Data Source",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {"from": "now-3h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ruckus Unleashed",
+  "uid": "ruckus-unleashed",
+  "version": 1
+}

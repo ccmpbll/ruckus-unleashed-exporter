@@ -466,6 +466,12 @@ async def collect_metrics() -> bytes:
                         "vlan":                 str(cl.get("vlan", "")),
                         "rssi_level":           str(cl.get("rssi-level", "")),
                         "health_level":         str(cl.get("display-health-level", "")),
+                        "ip":                   str(cl.get("ip", "")),
+                        "ipv6":                 str(cl.get("ipv6", "")),
+                        "device_type":          str(cl.get("dvctype", "")),
+                        "model":                str(cl.get("model", "")),
+                        "channelization":       str(cl.get("channelization", "")),
+                        "channel":              str(cl.get("channel", "")),
                     })
 
             except Exception as e:
