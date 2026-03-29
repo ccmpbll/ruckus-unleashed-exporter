@@ -70,8 +70,9 @@ scrape_configs:
 | `ruckus_ap_status` | `ap_mac`, `ap_name`, `ap_model` | Connection status (1=connected) |
 | `ruckus_ap_client_count` | `ap_mac`, `ap_name` | Clients connected to this AP |
 | `ruckus_ap_uptime_seconds` | `ap_mac`, `ap_name` | AP uptime in seconds |
-| `ruckus_ap_lan_rx_bytes` | `ap_mac`, `ap_name` | LAN interface RX bytes |
-| `ruckus_ap_lan_tx_bytes` | `ap_mac`, `ap_name` | LAN interface TX bytes |
+| `ruckus_ap_lan_rx_bytes_total` | `ap_mac`, `ap_name` | Total cumulative LAN interface RX bytes |
+| `ruckus_ap_lan_tx_bytes_total` | `ap_mac`, `ap_name` | Total cumulative LAN interface TX bytes |
+| `ruckus_ap_reboot_total` | `ap_mac`, `ap_name`, `reason` | Cumulative reboot count by reason (`application`, `user`, `reset_button`, `kernel_panic`, `watchdog`, `powercycle`) |
 
 ### Per-Radio
 
@@ -84,9 +85,15 @@ scrape_configs:
 | `ruckus_radio_channel_utilization_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime busy % |
 | `ruckus_radio_airtime_rx_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime RX % |
 | `ruckus_radio_airtime_tx_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime TX % |
-| `ruckus_radio_tx_bytes` | `ap_mac`, `ap_name`, `radio_band` | Radio total TX bytes |
-| `ruckus_radio_rx_bytes` | `ap_mac`, `ap_name`, `radio_band` | Radio total RX bytes |
+| `ruckus_radio_tx_bytes_total` | `ap_mac`, `ap_name`, `radio_band` | Total cumulative radio TX bytes |
+| `ruckus_radio_rx_bytes_total` | `ap_mac`, `ap_name`, `radio_band` | Total cumulative radio RX bytes |
 | `ruckus_radio_tx_retries_total` | `ap_mac`, `ap_name`, `radio_band` | TX retries |
+| `ruckus_radio_tx_packets_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative TX packet count |
+| `ruckus_radio_tx_failures_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative TX failure count (distinct from retries) |
+| `ruckus_radio_avg_rssi_dbm` | `ap_mac`, `ap_name`, `radio_band` | Average RSSI of all associated clients in dBm |
+| `ruckus_radio_channel_width_mhz` | `ap_mac`, `ap_name`, `radio_band` | Channel width in MHz |
+| `ruckus_radio_assoc_failures_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative client association failures |
+| `ruckus_radio_disassoc_abnormal_total` | `ap_mac`, `ap_name`, `radio_band` | Cumulative abnormal client disassociations |
 
 ### Per-Client
 
@@ -94,18 +101,21 @@ scrape_configs:
 |---|---|---|
 | `ruckus_client_rssi_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal strength in dBm |
 | `ruckus_client_noise_floor_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Noise floor in dBm |
+| `ruckus_client_snr_db` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal-to-noise ratio in dB (only set when both RSSI and noise floor are non-zero) |
 
 ### Per-VAP (SSID)
 
 | Metric | Labels | Description |
 |---|---|---|
 | `ruckus_vap_client_count` | `ap_mac`, `ssid`, `radio_band`, `bssid` | Clients on this VAP |
-| `ruckus_vap_tx_bytes` | `ap_mac`, `ssid`, `radio_band` | TX bytes |
-| `ruckus_vap_rx_bytes` | `ap_mac`, `ssid`, `radio_band` | RX bytes |
+| `ruckus_vap_tx_bytes_total` | `ap_mac`, `ssid`, `radio_band` | Total cumulative TX bytes |
+| `ruckus_vap_rx_bytes_total` | `ap_mac`, `ssid`, `radio_band` | Total cumulative RX bytes |
 | `ruckus_vap_tx_packets_total` | `ap_mac`, `ssid`, `radio_band` | TX packets |
 | `ruckus_vap_rx_packets_total` | `ap_mac`, `ssid`, `radio_band` | RX packets |
 | `ruckus_vap_tx_errors_total` | `ap_mac`, `ssid`, `radio_band` | TX errors |
 | `ruckus_vap_rx_errors_total` | `ap_mac`, `ssid`, `radio_band` | RX errors |
+| `ruckus_vap_tx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative TX data drop packet count |
+| `ruckus_vap_rx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative RX drop packet count |
 
 ## Known Potential Issues
 
