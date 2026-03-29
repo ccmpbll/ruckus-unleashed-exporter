@@ -50,7 +50,6 @@ scrape_configs:
 | Endpoint | Description |
 |---|---|
 | `/metrics` | Prometheus metrics |
-| `/health` | Health check (returns `ok`) |
 
 ## Metrics
 

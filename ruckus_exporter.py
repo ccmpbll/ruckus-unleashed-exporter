@@ -461,10 +461,6 @@ async def metrics_handler(request):
     return web.Response(body=output, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
-async def health_handler(request):
-    return web.Response(text="ok")
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -480,8 +476,6 @@ async def main():
 
     app = web.Application()
     app.router.add_get("/metrics", metrics_handler)
-    app.router.add_get("/health", health_handler)
-    app.router.add_get("/", health_handler)
 
     runner = web.AppRunner(app)
     await runner.setup()
