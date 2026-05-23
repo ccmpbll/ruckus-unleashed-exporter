@@ -107,6 +107,16 @@ scrape_configs:
 | `ruckus_client_noise_floor_dbm` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Noise floor in dBm |
 | `ruckus_client_snr_db` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Signal-to-noise ratio in dB (only set when both RSSI and noise floor are non-zero) |
 | `ruckus_client_protocol_info` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Per-client negotiated protocol and connection attributes: `ieee80211_radio_type`, `encryption`, `auth_method`, `vlan`, `rssi_level`, `health_level`, `ip`, `ipv6`, `device_type`, `model`, `channelization`, `channel` |
+| `ruckus_client_session_duration_seconds` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Seconds since client first associated in this session |
+| `ruckus_client_session_rx_bytes` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Bytes received by this client since association |
+| `ruckus_client_session_tx_bytes` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Bytes transmitted by this client since association |
+| `ruckus_client_session_rx_packets` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Packets received by this client since association |
+| `ruckus_client_session_tx_packets` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | Packets transmitted by this client since association |
+| `ruckus_client_session_retries` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | TX retries since association |
+| `ruckus_client_session_rx_crc_errors` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | RX CRC errors since association |
+| `ruckus_client_session_tx_drop_data` | `client_mac`, `client_name`, `ap_mac`, `ssid`, `radio_band` | TX data frame drops since association |
+
+> **Note on per-client session metrics:** These are Gauges, not Counters. The Unleashed API reports cumulative totals since the client's current association — they reset to zero each time a client disconnects and reconnects. `rate()` will work correctly during a stable session, but will produce a transient dip to zero at reconnect events. For most home and small-office deployments where clients reconnect infrequently, this is negligible in practice.
 
 ### Per-VAP (SSID)
 
@@ -174,6 +184,8 @@ A pre-built dashboard is available at [`dashboards/ruckus-unleashed.json`](dashb
 | Client Detail | Per-client table showing: Client, MAC, IP, SSID, Band, Channel, Width, RSSI, SNR, Protocol, Encryption, Auth, Device Type, Model, Signal Level, Health, VLAN, IPv6 |
 
 ## Known Potential Issues
+
+- **Per-client session metrics reset on reconnect**: `ruckus_client_session_rx_bytes`, `ruckus_client_session_tx_bytes`, and related session metrics count from the client's most recent association event — not from AP boot. A client disconnect/reconnect resets them to zero. These are exposed as Gauges rather than Counters for this reason. `rate()` works correctly during a stable session but will show a brief dip to zero at reconnect events.
 
 - **`ruckus_radio_tx_power` reports unexpected values in Auto mode**: When a radio is set to Auto TX power, the AP may report the current dynamically-chosen power level (e.g. `25` on 2.4GHz) rather than `0`. This causes the metric to show a negative value instead of `0`. Radios set to Full or a manual reduction step behave as expected.
 

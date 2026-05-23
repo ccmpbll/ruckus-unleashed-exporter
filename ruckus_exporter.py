@@ -253,6 +253,32 @@ async def collect_metrics() -> bytes:
     client_protocol_info = Info("ruckus_client_protocol", "Per-client negotiated protocol and connection attributes",
                                 ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
 
+    # -- Per-client session stats (require interval_stats=True; reset to 0 on reconnect) --
+    client_session_duration = Gauge("ruckus_client_session_duration_seconds",
+                                    "Seconds since client first associated in this session",
+                                    ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_session_rx_bytes = Gauge("ruckus_client_session_rx_bytes",
+                                    "Bytes received by client since association — resets to 0 on reconnect, treat as Gauge not Counter",
+                                    ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_session_tx_bytes = Gauge("ruckus_client_session_tx_bytes",
+                                    "Bytes transmitted by client since association — resets to 0 on reconnect, treat as Gauge not Counter",
+                                    ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_session_rx_packets = Gauge("ruckus_client_session_rx_packets",
+                                      "Packets received by client since association — resets to 0 on reconnect",
+                                      ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_session_tx_packets = Gauge("ruckus_client_session_tx_packets",
+                                      "Packets transmitted by client since association — resets to 0 on reconnect",
+                                      ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_session_retries = Gauge("ruckus_client_session_retries",
+                                   "TX retries for client since association — resets to 0 on reconnect",
+                                   ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_session_rx_crc_errors = Gauge("ruckus_client_session_rx_crc_errors",
+                                         "RX CRC errors for client since association — resets to 0 on reconnect",
+                                         ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+    client_session_tx_drop_data = Gauge("ruckus_client_session_tx_drop_data",
+                                        "TX data frame drops for client since association — resets to 0 on reconnect",
+                                        ["client_mac", "client_name", "ap_mac", "ssid", "radio_band"], registry=registry)
+
     # -- Per-VAP --
     vap_clients = Gauge("ruckus_vap_client_count", "Clients on this VAP",
                         ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry)
@@ -276,6 +302,7 @@ async def collect_metrics() -> bytes:
                        ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry)
 
     start = time.monotonic()
+    now_ts = time.time()
     ap_count = 0
     client_count = 0
 
@@ -436,7 +463,7 @@ async def collect_metrics() -> bytes:
             # Active Clients
             # -----------------------------------------------------------
             try:
-                clients = await api.get_active_clients()
+                clients = await api.get_active_clients(interval_stats=True)
                 client_count = len(clients)
                 _debug_data["clients"] = [
                     {k: v for k, v in cl.items() if k not in _CLIENT_REDACT}
@@ -473,6 +500,18 @@ async def collect_metrics() -> bytes:
                         "channelization":       str(cl.get("channelization", "")),
                         "channel":              str(cl.get("channel", "")),
                     })
+
+                    # Session stats (available via interval_stats=True; reset to 0 on reconnect)
+                    first_assoc = _safe_float(cl.get("first-assoc", 0))
+                    if first_assoc > 0:
+                        client_session_duration.labels(**labels).set(now_ts - first_assoc)
+                    client_session_rx_bytes.labels(**labels).set(_safe_float(cl.get("total-rx-bytes", 0)))
+                    client_session_tx_bytes.labels(**labels).set(_safe_float(cl.get("total-tx-bytes", 0)))
+                    client_session_rx_packets.labels(**labels).set(_safe_float(cl.get("total-rx-pkts", 0)))
+                    client_session_tx_packets.labels(**labels).set(_safe_float(cl.get("total-tx-pkts", 0)))
+                    client_session_retries.labels(**labels).set(_safe_float(cl.get("total-retries", 0)))
+                    client_session_rx_crc_errors.labels(**labels).set(_safe_float(cl.get("total-rx-crc-errs", 0)))
+                    client_session_tx_drop_data.labels(**labels).set(_safe_float(cl.get("tx-drop-data", 0)))
 
             except Exception as e:
                 log.error("Error collecting client stats: %s", e)
