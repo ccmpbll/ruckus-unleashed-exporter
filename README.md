@@ -181,6 +181,20 @@ A pre-built dashboard is available at [`dashboards/ruckus-unleashed.json`](dashb
 |---|---|
 | Clients by Band | Pie chart — client count split by 2.4GHz vs 5GHz |
 | Clients by Wi-Fi Protocol | Pie chart — client count grouped by 802.11 protocol (802.11n, 802.11ac, etc.) |
+
+### Client Traffic Row
+
+| Panel | Description |
+|---|---|
+| Client Throughput (Top 10) | Time series — per-client TX/RX rate (bytes/sec) for the top 10 clients by current throughput |
+| Session TX by Client | Bar gauge — cumulative bytes transmitted per client since last association, sorted descending |
+| Session RX by Client | Bar gauge — cumulative bytes received per client since last association, sorted descending |
+| Session Duration | Bar gauge — how long each client has been continuously associated, sorted descending |
+
+### Client Detail Row
+
+| Panel | Description |
+|---|---|
 | Client Detail | Per-client table showing: Client, MAC, IP, SSID, Band, Channel, Width, RSSI, SNR, Protocol, Encryption, Auth, Device Type, Model, Signal Level, Health, VLAN, IPv6 |
 
 ## Known Potential Issues

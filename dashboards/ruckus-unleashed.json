@@ -578,9 +578,109 @@
       ]
     },
 
+    { "id": 50, "type": "row", "title": "Client Traffic",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 48}
+    },
+
+    { "id": 51, "type": "timeseries", "title": "Client Throughput (Top 10)",
+      "description": "Per-client TX/RX rates derived from session byte counters. Counters reset to zero on reconnect, which causes a brief dip in rate(); this is expected behaviour for infrequent reconnects.",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 49},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2,
+            "fillOpacity": 10, "gradientMode": "opacity", "showPoints": "never", "spanNulls": false
+          },
+          "unit": "Bps",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "topk(10, rate(ruckus_client_session_tx_bytes[5m]))", "legendFormat": "{{client_name}} TX", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "topk(10, rate(ruckus_client_session_rx_bytes[5m]))", "legendFormat": "{{client_name}} RX", "refId": "B"}
+      ]
+    },
+
+    { "id": 52, "type": "bargauge", "title": "Session TX by Client",
+      "description": "Total bytes transmitted by each client since last association.",
+      "gridPos": {"h": 10, "w": 8, "x": 0, "y": 57},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": true},
+        "orientation": "horizontal", "displayMode": "gradient",
+        "valueMode": "color", "minVizHeight": 10, "minVizWidth": 0, "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "bytes", "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "sort_desc(ruckus_client_session_tx_bytes)", "instant": true, "legendFormat": "{{client_name}}", "refId": "A"}
+      ]
+    },
+
+    { "id": 53, "type": "bargauge", "title": "Session RX by Client",
+      "description": "Total bytes received by each client since last association.",
+      "gridPos": {"h": 10, "w": 8, "x": 8, "y": 57},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": true},
+        "orientation": "horizontal", "displayMode": "gradient",
+        "valueMode": "color", "minVizHeight": 10, "minVizWidth": 0, "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "bytes", "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "sort_desc(ruckus_client_session_rx_bytes)", "instant": true, "legendFormat": "{{client_name}}", "refId": "A"}
+      ]
+    },
+
+    { "id": 54, "type": "bargauge", "title": "Session Duration",
+      "description": "Time each client has been continuously associated in this session.",
+      "gridPos": {"h": 10, "w": 8, "x": 16, "y": 57},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": true},
+        "orientation": "horizontal", "displayMode": "gradient",
+        "valueMode": "color", "minVizHeight": 10, "minVizWidth": 0, "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "s", "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "sort_desc(ruckus_client_session_duration_seconds)", "instant": true, "legendFormat": "{{client_name}}", "refId": "A"}
+      ]
+    },
+
     { "id": 41, "type": "table", "title": "Client Detail",
       "description": "Instant snapshot. RSSI and SNR columns use color thresholds. Protocol info joined via group_left().",
-      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 49},
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 67},
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "options": {
         "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
