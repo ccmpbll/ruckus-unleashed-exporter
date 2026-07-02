@@ -53,14 +53,7 @@ log = logging.getLogger("ruckus_exporter")
 # ---------------------------------------------------------------------------
 # Scrape lock (prevents overlapping scrapes)
 # ---------------------------------------------------------------------------
-_scrape_lock: asyncio.Lock | None = None
-
-
-def _get_scrape_lock() -> asyncio.Lock:
-    global _scrape_lock
-    if _scrape_lock is None:
-        _scrape_lock = asyncio.Lock()
-    return _scrape_lock
+_scrape_lock = asyncio.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -582,7 +575,7 @@ async def collect_metrics() -> bytes:
 # ---------------------------------------------------------------------------
 
 async def metrics_handler(request):
-    async with _get_scrape_lock():
+    async with _scrape_lock:
         output = await collect_metrics()
     return web.Response(body=output, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
