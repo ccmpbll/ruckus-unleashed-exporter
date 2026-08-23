@@ -26,6 +26,8 @@ docker run -d \
 | `RUCKUS_PASS` | Yes | — | Unleashed admin password |
 | `RUCKUS_USER` | Yes | — | Unleashed admin username |
 | `EXPORTER_PORT` | No | `9785` | Port to expose Prometheus metrics on |
+| `DEBUG_BIND` | No | `127.0.0.1` | Address the `/debug` listener binds. Set to `0.0.0.0` to reach it from outside the container |
+| `DEBUG_PORT` | No | `9786` | Port the `/debug` listener binds |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity for exporter output: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 ## Prometheus Scrape Config
@@ -46,10 +48,19 @@ scrape_configs:
 
 ## Endpoints
 
-| Endpoint | Description |
-|---|---|
-| `/metrics` | Prometheus metrics |
-| `/debug` | Raw API response data from the last scrape (JSON). Sensitive fields (`wpa-passphrase`, `preSharedKey`, `psk`) are redacted. |
+| Endpoint | Listener | Description |
+|---|---|---|
+| `/metrics` | `0.0.0.0:9785` | Prometheus metrics |
+| `/debug` | `127.0.0.1:9786` | Raw API response data from the last scrape (JSON). Sensitive fields (`wpa-passphrase`, `preSharedKey`, `psk`) are redacted. |
+
+`/debug` runs on its own listener bound to loopback, so it is reachable only from inside the container's network namespace. Docker publishes ports to the container's bridge address rather than its loopback, which means even `-p 9786:9786` will not reach it. To read it, exec into the container:
+
+```bash
+docker exec ruckus-exporter python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9786/debug').read().decode())"
+```
+
+If you would rather expose it, set `DEBUG_BIND=0.0.0.0` and publish `DEBUG_PORT`. Be aware that the endpoint is unauthenticated and the redaction is a denylist, so only do that on a network you trust.
 
 ## Metrics
 

@@ -10,11 +10,14 @@ Environment Variables:
   RUCKUS_USER       - Unleashed admin username (required)
   RUCKUS_PASS       - Unleashed admin password (required)
   EXPORTER_PORT     - Prometheus metrics port (default: 9785)
+  DEBUG_BIND        - Address the /debug listener binds (default: 127.0.0.1)
+  DEBUG_PORT        - Port the /debug listener binds (default: 9786)
   LOG_LEVEL         - Logging level for exporter output (default: INFO)
 
 Endpoints:
-  /metrics          - Prometheus metrics
-  /debug            - Raw API response data from the last scrape (JSON)
+  /metrics          - Prometheus metrics, on EXPORTER_PORT
+  /debug            - Raw API response data from the last scrape (JSON), on the
+                      separate DEBUG_BIND:DEBUG_PORT listener
 """
 
 import asyncio
@@ -42,6 +45,8 @@ RUCKUS_HOST = os.environ.get("RUCKUS_HOST", "")
 RUCKUS_USER = os.environ.get("RUCKUS_USER", "")
 RUCKUS_PASS = os.environ.get("RUCKUS_PASS", "")
 EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
+DEBUG_BIND = os.environ.get("DEBUG_BIND", "127.0.0.1")
+DEBUG_PORT = int(os.environ.get("DEBUG_PORT", "9786"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 logging.basicConfig(
@@ -604,13 +609,24 @@ async def main():
 
     app = web.Application()
     app.router.add_get("/metrics", metrics_handler)
-    app.router.add_get("/debug", debug_handler)
 
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", EXPORTER_PORT)
     await site.start()
     log.info("Listening on :%d", EXPORTER_PORT)
+
+    # /debug hands out raw controller responses, so we keep it on its own
+    # listener bound to loopback by default. Docker publishes ports to the
+    # container's bridge address, which is why -p cannot reach this one.
+    debug_app = web.Application()
+    debug_app.router.add_get("/debug", debug_handler)
+
+    debug_runner = web.AppRunner(debug_app)
+    await debug_runner.setup()
+    debug_site = web.TCPSite(debug_runner, DEBUG_BIND, DEBUG_PORT)
+    await debug_site.start()
+    log.info("Debug endpoint listening on %s:%d", DEBUG_BIND, DEBUG_PORT)
 
     await asyncio.Event().wait()
 
