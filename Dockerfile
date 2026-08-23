@@ -21,10 +21,18 @@ ENV DEBUG_DUMP="0"
 
 WORKDIR /app
 
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin exporter
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ruckus_exporter.py .
+
+# Pre-build the bytecode cache as root, because /app stays root-owned and the
+# exporter user cannot write __pycache__ at import time
+RUN python -m compileall -q /app
+
+USER exporter
 
 EXPOSE 9785
 
