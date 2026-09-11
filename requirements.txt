@@ -1,3 +1,6 @@
-aioruckus>=0.42
+# Temporarily pinned to upstream main so we can test the unreleased per-request
+# timeout, redact_secrets and numeric-type changes. Revert to a normal version
+# constraint once ms264556 cuts a release.
+aioruckus @ git+https://github.com/ms264556/aioruckus@885723e2505333aa1aad59aaa14780dca1b76844
 aiohttp>=3.9,<3.14
 prometheus_client>=0.20

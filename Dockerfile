@@ -24,7 +24,14 @@ WORKDIR /app
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin exporter
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# aioruckus is temporarily pinned to a git SHA, so pip needs git to resolve it.
+# We install and purge in one layer to keep git out of the final image, and both
+# this and the pin come back out once there's a release to point at.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove git \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY ruckus_exporter.py .
 
