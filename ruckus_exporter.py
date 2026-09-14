@@ -12,6 +12,13 @@ Environment Variables:
   EXPORTER_PORT     - Prometheus metrics port (default: 9785)
   DEBUG_BIND        - Address the /debug listener binds (default: 127.0.0.1)
   DEBUG_PORT        - Port the /debug listener binds (default: 9786)
+  AJAX_TIMEOUT      - Timeout in seconds applied to each HTTP request aioruckus
+                      makes against the Unleashed controller during a scrape
+                      (default: 10). Note the interval-stats getters issue two
+                      requests and bound each one separately, so a slow scrape
+                      can take up to twice this. aioruckus already defaults its
+                      own session timeout to 10s, so this is mainly here for
+                      users who want a different bound
   LOG_LEVEL         - Logging level for exporter output (default: INFO)
 
 Endpoints:
@@ -47,6 +54,7 @@ RUCKUS_PASS = os.environ.get("RUCKUS_PASS", "")
 EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
 DEBUG_BIND = os.environ.get("DEBUG_BIND", "127.0.0.1")
 DEBUG_PORT = int(os.environ.get("DEBUG_PORT", "9786"))
+AJAX_TIMEOUT = int(os.environ.get("AJAX_TIMEOUT", "10"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 logging.basicConfig(
@@ -314,7 +322,7 @@ async def collect_metrics() -> bytes:
             # System Info (sysinfo for name/IP, ap_stats for everything else)
             # -----------------------------------------------------------
             try:
-                sysinfo = await api.get_system_info(SystemStat.ALL)
+                sysinfo = await api.get_system_info(SystemStat.ALL, timeout=AJAX_TIMEOUT)
                 _debug_data["sysinfo"] = _redact_sysinfo(sysinfo)
                 identity = sysinfo.get("identity", {})
                 mgmt_ip = sysinfo.get("mgmt-ip", {})
@@ -329,7 +337,7 @@ async def collect_metrics() -> bytes:
             # AP Stats
             # -----------------------------------------------------------
             try:
-                ap_stats_list = await api.get_ap_stats()
+                ap_stats_list = await api.get_ap_stats(timeout=AJAX_TIMEOUT)
                 ap_count = len(ap_stats_list)
                 _debug_data["ap_stats"] = [
                     {k: v for k, v in ap.items() if k not in _AP_REDACT}
@@ -461,7 +469,7 @@ async def collect_metrics() -> bytes:
             # Active Clients
             # -----------------------------------------------------------
             try:
-                clients = await api.get_active_clients(interval_stats=True)
+                clients = await api.get_active_clients(interval_stats=True, timeout=AJAX_TIMEOUT)
                 client_count = len(clients)
                 _debug_data["clients"] = [
                     {k: v for k, v in cl.items() if k not in _CLIENT_REDACT}
@@ -518,7 +526,7 @@ async def collect_metrics() -> bytes:
             # VAP / Per-SSID Stats
             # -----------------------------------------------------------
             try:
-                vaps = await api.get_vap_stats()
+                vaps = await api.get_vap_stats(timeout=AJAX_TIMEOUT)
                 _debug_data["vaps"] = vaps
 
                 for vap in vaps:
