@@ -1,3 +1,4 @@
-aioruckus>=0.42
+# 0.49 is the first release with the per-request timeout kwarg on the getters
+aioruckus>=0.49
 aiohttp>=3.9,<3.14
 prometheus_client>=0.20

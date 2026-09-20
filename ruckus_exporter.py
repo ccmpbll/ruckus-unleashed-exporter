@@ -12,6 +12,13 @@ Environment Variables:
   EXPORTER_PORT     - Prometheus metrics port (default: 9785)
   DEBUG_BIND        - Address the /debug listener binds (default: 127.0.0.1)
   DEBUG_PORT        - Port the /debug listener binds (default: 9786)
+  AJAX_TIMEOUT      - Timeout in seconds applied to each HTTP request aioruckus
+                      makes against the Unleashed controller during a scrape
+                      (default: 10). Note the interval-stats getters issue two
+                      requests and bound each one separately, so a slow scrape
+                      can take up to twice this. aioruckus already defaults its
+                      own session timeout to 10s, so this is mainly here for
+                      users who want a different bound
   LOG_LEVEL         - Logging level for exporter output (default: INFO)
 
 Endpoints:
@@ -47,6 +54,7 @@ RUCKUS_PASS = os.environ.get("RUCKUS_PASS", "")
 EXPORTER_PORT = int(os.environ.get("EXPORTER_PORT", "9785"))
 DEBUG_BIND = os.environ.get("DEBUG_BIND", "127.0.0.1")
 DEBUG_PORT = int(os.environ.get("DEBUG_PORT", "9786"))
+AJAX_TIMEOUT = int(os.environ.get("AJAX_TIMEOUT", "10"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 logging.basicConfig(
@@ -66,66 +74,29 @@ _scrape_lock = asyncio.Lock()
 # ---------------------------------------------------------------------------
 _debug_data: dict = {}
 
-# Fields stripped from client records before storing in _debug_data
+# Fields stripped from records before storing in _debug_data. aioruckus's
+# redact_secrets only knows about the x- prefixed pairs (x-psk/psk), so we
+# keep this denylist for the bare fields it can't recognize
 _CLIENT_REDACT = {"wpa-passphrase"}
-# Fields stripped from AP records before storing in _debug_data
 _AP_REDACT = {"preSharedKey", "psk"}
-
-# Sensitive fields to redact from sysinfo, keyed by top-level section.
-# Each value is a set of field names within that section to replace with "[redacted]".
-_SYSINFO_REDACT: dict[str, set[str]] = {
-    "credential-reset":      {"security-email", "security-answer"},
-    "snmp":                  {"ro-community", "rw-community"},
-    "snmp-trap":             {"password"},
-    "tr069":                 {"rw-password", "ro-password", "op-password"},
-    "cluster":               {"password"},
-    "mesh-policy":           {"psk"},
-    "certificates":          {"pvt-key-passwd"},
-    "sci":                   {"scipassword"},
-    "aws-sns":               {"aws-sns-accesskey", "aws-sns-secretkey"},
-    "unleashed-network":     {"unleashed-network-token"},
-    "gdpr":                  {"passwd"},
-    "pubnub":                {"publish-key", "subscribe-key"},
-    "snmpv3-trapusr":        {"authPP", "privPP"},
-    "snmpv3-snmpusr":        {"authPP", "privPP"},
-}
-
-
-def _redact_sysinfo(sysinfo: dict) -> dict:
-    """Return a shallow-copy of sysinfo with sensitive nested fields replaced by '[redacted]'."""
-    result = dict(sysinfo)
-    for section, fields in _SYSINFO_REDACT.items():
-        if section not in result:
-            continue
-        original = result[section]
-        if isinstance(original, dict):
-            result[section] = {
-                k: ("[redacted]" if k in fields else v)
-                for k, v in original.items()
-            }
-        elif isinstance(original, list):
-            result[section] = [
-                {k: ("[redacted]" if k in fields else v) for k, v in item.items()}
-                if isinstance(item, dict) else item
-                for item in original
-            ]
-    return result
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _safe_float(val, default=0.0):
+def _num(val, default=0):
+    """Guard a value on its way into a Gauge.
+
+    aioruckus 0.49 hands us the numeric fields as int/float already, but it leaves
+    placeholders such as "" and "N/A" (which a disconnected AP reports for most of
+    its counters) as strings, and a couple of fields we read are still typed str
+    upstream. Gauge.set() would raise on any of those and abort the whole section.
+    """
+    if isinstance(val, (int, float)):
+        return val
     try:
         return float(val)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_int(val, default=0):
-    try:
-        return int(val)
     except (TypeError, ValueError):
         return default
 
@@ -147,7 +118,7 @@ def _radio_band(data: dict) -> str:
     rb = str(data.get("radio-band", ""))
     if rb:
         return _band_from_str(rb)
-    channel = _safe_int(data.get("channel", 0))
+    channel = _num(data.get("channel", 0))
     if 1 <= channel <= 14:
         return "2.4GHz"
     if 36 <= channel <= 177:
@@ -164,9 +135,9 @@ def _radio_band(data: dict) -> str:
     return f"unknown-ch{channel}"
 
 
-def _mem_percent(avail: str, total: str) -> float:
-    t = _safe_float(total)
-    a = _safe_float(avail)
+def _mem_percent(avail, total) -> float:
+    t = _num(total)
+    a = _num(avail)
     if t <= 0:
         return 0.0
     return round((t - a) / t * 100, 1)
@@ -317,8 +288,10 @@ async def collect_metrics() -> bytes:
     client_count = 0
 
     try:
+        # We never need a decrypted passphrase, so have aioruckus drop them
+        # before they land in any response we hold on to for /debug
         async with AjaxSession.async_create(
-            RUCKUS_HOST, RUCKUS_USER, RUCKUS_PASS
+            RUCKUS_HOST, RUCKUS_USER, RUCKUS_PASS, redact_secrets=True
         ) as session:
             api = session.api
 
@@ -326,8 +299,12 @@ async def collect_metrics() -> bytes:
             # System Info (sysinfo for name/IP, ap_stats for everything else)
             # -----------------------------------------------------------
             try:
-                sysinfo = await api.get_system_info(SystemStat.ALL)
-                _debug_data["sysinfo"] = _redact_sysinfo(sysinfo)
+                # We only ask for the two sections we read, so the rest of the
+                # config (and every secret in it) never reaches this process
+                sysinfo = await api.get_system_info(
+                    SystemStat.IDENTITY, SystemStat.MGMT_IP, timeout=AJAX_TIMEOUT
+                )
+                _debug_data["sysinfo"] = sysinfo
                 identity = sysinfo.get("identity", {})
                 mgmt_ip = sysinfo.get("mgmt-ip", {})
                 sys_name = str(identity.get("name", ""))
@@ -341,7 +318,7 @@ async def collect_metrics() -> bytes:
             # AP Stats
             # -----------------------------------------------------------
             try:
-                ap_stats_list = await api.get_ap_stats()
+                ap_stats_list = await api.get_ap_stats(timeout=AJAX_TIMEOUT)
                 ap_count = len(ap_stats_list)
                 _debug_data["ap_stats"] = [
                     {k: v for k, v in ap.items() if k not in _AP_REDACT}
@@ -361,10 +338,10 @@ async def collect_metrics() -> bytes:
                     "firmware": str(master_ap.get("firmware-version", "")),
                     "hardware_version": str(master_ap.get("hardware-version", "")),
                 })
-                system_cpu.set(_safe_float(master_ap.get("cpu_util", 0)))
+                system_cpu.set(_num(master_ap.get("cpu_util", 0)))
                 system_memory.set(_mem_percent(
-                    master_ap.get("mem_avail", "0"),
-                    master_ap.get("mem_total", "0"),
+                    master_ap.get("mem_avail", 0),
+                    master_ap.get("mem_total", 0),
                 ))
 
                 total_clients = 0
@@ -373,14 +350,14 @@ async def collect_metrics() -> bytes:
                     name = ap.get("devname", mac)
                     model = ap.get("model", "unknown")
                     is_connected = 1 if str(ap.get("state", "0")) == "1" else 0
-                    ap_client_count = _safe_int(ap.get("num-sta", 0))
+                    ap_client_count = _num(ap.get("num-sta", 0))
 
                     ap_status.labels(ap_mac=mac, ap_name=name, ap_model=model).set(is_connected)
                     ap_clients.labels(ap_mac=mac, ap_name=name).set(ap_client_count)
-                    ap_uptime.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("uptime", 0)))
-                    ap_lan_rx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_rx_byte", 0)))
-                    ap_lan_tx_bytes.labels(ap_mac=mac, ap_name=name).set(_safe_float(ap.get("lan_stats_tx_byte", 0)))
-                    ap_rogue.labels(ap_mac=mac, ap_name=name).set(_safe_int(ap.get("num-rogue", 0)))
+                    ap_uptime.labels(ap_mac=mac, ap_name=name).set(_num(ap.get("uptime", 0)))
+                    ap_lan_rx_bytes.labels(ap_mac=mac, ap_name=name).set(_num(ap.get("lan_stats_rx_byte", 0)))
+                    ap_lan_tx_bytes.labels(ap_mac=mac, ap_name=name).set(_num(ap.get("lan_stats_tx_byte", 0)))
+                    ap_rogue.labels(ap_mac=mac, ap_name=name).set(_num(ap.get("num-rogue", 0)))
                     reboot_reasons = {
                         "application":  "application-reboot-counter",
                         "user":         "user-reboot-counter",
@@ -391,7 +368,7 @@ async def collect_metrics() -> bytes:
                     }
                     for reason, field in reboot_reasons.items():
                         ap_reboot.labels(ap_mac=mac, ap_name=name, reason=reason).set(
-                            _safe_int(ap.get(field, 0))
+                            _num(ap.get(field, 0))
                         )
                     total_clients += ap_client_count
 
@@ -405,72 +382,72 @@ async def collect_metrics() -> bytes:
                         channel = str(radio.get("channel", "0"))
 
                         radio_clients.labels(ap_mac=mac, ap_name=name, radio_band=band, channel=channel).set(
-                            _safe_int(radio.get("num-sta", 0))
+                            _num(radio.get("num-sta", 0))
                         )
-                        _txp = _safe_float(radio.get("tx-power", 0))
+                        _txp = _num(radio.get("tx-power", 0))
                         radio_tx_power.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
                             -_txp if _txp != 0 else 0
                         )
                         radio_noise_floor.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("noisefloor", 0))
+                            _num(radio.get("noisefloor", 0))
                         )
                         radio_phy_errors.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("phyerr", 0))
+                            _num(radio.get("phyerr", 0))
                         )
                         # Airtime counters accumulate over rf-samples sampling intervals, so we
                         # divide by it to recover the percentage the controller UI displays. The
                         # divisor is per-radio and not a constant: an R670 reports 1 while an R850
                         # reports 11. A disconnected AP omits these keys entirely, and without a
                         # sample count we can't scale, so we publish nothing rather than a fake 0.
-                        rf_samples = _safe_float(radio.get("rf-samples", 0))
+                        rf_samples = _num(radio.get("rf-samples", 0))
                         if rf_samples > 0:
                             radio_channel_utilization.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                                _safe_float(radio.get("airtime-busy", 0)) / rf_samples
+                                _num(radio.get("airtime-busy", 0)) / rf_samples
                             )
                             radio_airtime_rx.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                                _safe_float(radio.get("airtime-rx", 0)) / rf_samples
+                                _num(radio.get("airtime-rx", 0)) / rf_samples
                             )
                             radio_airtime_tx.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                                _safe_float(radio.get("airtime-tx", 0)) / rf_samples
+                                _num(radio.get("airtime-tx", 0)) / rf_samples
                             )
                             radio_airtime_total.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                                _safe_float(radio.get("airtime-total", 0)) / rf_samples
+                                _num(radio.get("airtime-total", 0)) / rf_samples
                             )
                         radio_tx_bytes.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("total-tx-bytes", 0))
+                            _num(radio.get("total-tx-bytes", 0))
                         )
                         radio_rx_bytes.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("total-rx-bytes", 0))
+                            _num(radio.get("total-rx-bytes", 0))
                         )
                         radio_tx_retries.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("radio-total-retries", 0))
+                            _num(radio.get("radio-total-retries", 0))
                         )
                         radio_tx_packets.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_int(radio.get("radio-total-tx-pkts", 0))
+                            _num(radio.get("radio-total-tx-pkts", 0))
                         )
                         radio_tx_failures.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_int(radio.get("radio-total-tx-fail", 0))
+                            _num(radio.get("radio-total-tx-fail", 0))
                         )
                         radio_avg_rssi.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            -_safe_float(radio.get("avg-rssi", 0))
+                            -_num(radio.get("avg-rssi", 0))
                         )
                         radio_channel_width.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_int(radio.get("channelization", 0))
+                            _num(radio.get("channelization", 0))
                         )
                         radio_assoc_failures.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_int(radio.get("mgmt-assoc-fail", 0))
+                            _num(radio.get("mgmt-assoc-fail", 0))
                         )
                         radio_disassoc_abnormal.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_int(radio.get("mgmt-disassoc-abnormal", 0))
+                            _num(radio.get("mgmt-disassoc-abnormal", 0))
                         )
                         radio_rx_packets.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("radio-total-rx-pkts", 0))
+                            _num(radio.get("radio-total-rx-pkts", 0))
                         )
                         radio_rx_decrypt_errors.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_float(radio.get("radio-total-rx-decrypt-error", 0))
+                            _num(radio.get("radio-total-rx-decrypt-error", 0))
                         )
                         radio_auth_failures.labels(ap_mac=mac, ap_name=name, radio_band=band).set(
-                            _safe_int(radio.get("mgmt-auth-fail", 0))
+                            _num(radio.get("mgmt-auth-fail", 0))
                         )
 
                 system_num_ap.set(ap_count)
@@ -483,7 +460,7 @@ async def collect_metrics() -> bytes:
             # Active Clients
             # -----------------------------------------------------------
             try:
-                clients = await api.get_active_clients(interval_stats=True)
+                clients = await api.get_active_clients(interval_stats=True, timeout=AJAX_TIMEOUT)
                 client_count = len(clients)
                 _debug_data["clients"] = [
                     {k: v for k, v in cl.items() if k not in _CLIENT_REDACT}
@@ -500,8 +477,8 @@ async def collect_metrics() -> bytes:
                     labels = dict(client_mac=cl_mac, client_name=cl_name,
                                   ap_mac=cl_ap, ssid=cl_ssid, radio_band=cl_band)
 
-                    rssi_val = _safe_float(cl.get("received-signal-strength", 0))
-                    nf_val = _safe_float(cl.get("noise-floor", 0))
+                    rssi_val = _num(cl.get("received-signal-strength", 0))
+                    nf_val = _num(cl.get("noise-floor", 0))
                     client_rssi.labels(**labels).set(rssi_val)
                     client_noise_floor.labels(**labels).set(nf_val)
                     if rssi_val != 0 and nf_val != 0:
@@ -522,16 +499,16 @@ async def collect_metrics() -> bytes:
                     })
 
                     # Session stats (available via interval_stats=True; reset to 0 on reconnect)
-                    first_assoc = _safe_float(cl.get("first-assoc", 0))
+                    first_assoc = _num(cl.get("first-assoc", 0))
                     if first_assoc > 0:
                         client_session_duration.labels(**labels).set(now_ts - first_assoc)
-                    client_session_rx_bytes.labels(**labels).set(_safe_float(cl.get("total-rx-bytes", 0)))
-                    client_session_tx_bytes.labels(**labels).set(_safe_float(cl.get("total-tx-bytes", 0)))
-                    client_session_rx_packets.labels(**labels).set(_safe_float(cl.get("total-rx-pkts", 0)))
-                    client_session_tx_packets.labels(**labels).set(_safe_float(cl.get("total-tx-pkts", 0)))
-                    client_session_retries.labels(**labels).set(_safe_float(cl.get("total-retries", 0)))
-                    client_session_rx_crc_errors.labels(**labels).set(_safe_float(cl.get("total-rx-crc-errs", 0)))
-                    client_session_tx_drop_data.labels(**labels).set(_safe_float(cl.get("tx-drop-data", 0)))
+                    client_session_rx_bytes.labels(**labels).set(_num(cl.get("total-rx-bytes", 0)))
+                    client_session_tx_bytes.labels(**labels).set(_num(cl.get("total-tx-bytes", 0)))
+                    client_session_rx_packets.labels(**labels).set(_num(cl.get("total-rx-pkts", 0)))
+                    client_session_tx_packets.labels(**labels).set(_num(cl.get("total-tx-pkts", 0)))
+                    client_session_retries.labels(**labels).set(_num(cl.get("total-retries", 0)))
+                    client_session_rx_crc_errors.labels(**labels).set(_num(cl.get("total-rx-crc-errs", 0)))
+                    client_session_tx_drop_data.labels(**labels).set(_num(cl.get("tx-drop-data", 0)))
 
             except Exception as e:
                 log.error("Error collecting client stats: %s", e)
@@ -540,7 +517,7 @@ async def collect_metrics() -> bytes:
             # VAP / Per-SSID Stats
             # -----------------------------------------------------------
             try:
-                vaps = await api.get_vap_stats()
+                vaps = await api.get_vap_stats(timeout=AJAX_TIMEOUT)
                 _debug_data["vaps"] = vaps
 
                 for vap in vaps:
@@ -550,31 +527,31 @@ async def collect_metrics() -> bytes:
                     v_band = _radio_band(vap)
 
                     vap_clients.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band, bssid=v_bssid).set(
-                        _safe_int(vap.get("num-sta", 0))
+                        _num(vap.get("num-sta", 0))
                     )
                     vap_tx_bytes.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("tx-bytes", 0))
+                        _num(vap.get("tx-bytes", 0))
                     )
                     vap_rx_bytes.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("rx-bytes", 0))
+                        _num(vap.get("rx-bytes", 0))
                     )
                     vap_tx_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("tx-pkts", 0))
+                        _num(vap.get("tx-pkts", 0))
                     )
                     vap_rx_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("rx-pkts", 0))
+                        _num(vap.get("rx-pkts", 0))
                     )
                     vap_tx_errors.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("tx-errors", 0))
+                        _num(vap.get("tx-errors", 0))
                     )
                     vap_rx_errors.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_float(vap.get("rx-errors", 0))
+                        _num(vap.get("rx-errors", 0))
                     )
                     vap_tx_drop_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_int(vap.get("tx-data-drop-pkts", 0))
+                        _num(vap.get("tx-data-drop-pkts", 0))
                     )
                     vap_rx_drop_pkts.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band).set(
-                        _safe_int(vap.get("rx-drop-pkt", 0))
+                        _num(vap.get("rx-drop-pkt", 0))
                     )
                     vap_status.labels(ap_mac=v_ap, ssid=v_ssid, radio_band=v_band, bssid=v_bssid).set(
                         1 if vap.get("vap-up", "") == "Up" else 0

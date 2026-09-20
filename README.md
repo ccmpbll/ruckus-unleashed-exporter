@@ -28,6 +28,7 @@ docker run -d \
 | `EXPORTER_PORT` | No | `9785` | Port to expose Prometheus metrics on |
 | `DEBUG_BIND` | No | `127.0.0.1` | Address the `/debug` listener binds. Set to `0.0.0.0` to reach it from outside the container |
 | `DEBUG_PORT` | No | `9786` | Port the `/debug` listener binds |
+| `AJAX_TIMEOUT` | No | `10` | Timeout in seconds applied to each HTTP request aioruckus makes against the Unleashed controller during a scrape. The interval-stats getters issue two requests and bound each one separately, so a slow scrape can take up to twice this. aioruckus itself defaults to a 10s socket timeout, so this mostly matters if you want to loosen or tighten that |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity for exporter output: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 ## Prometheus Scrape Config
