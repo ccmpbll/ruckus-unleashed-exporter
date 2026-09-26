@@ -99,6 +99,8 @@ If you would rather expose it, set `DEBUG_BIND=0.0.0.0` and publish `DEBUG_PORT`
 | `ruckus_radio_airtime_rx_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime RX % |
 | `ruckus_radio_airtime_tx_percent` | `ap_mac`, `ap_name`, `radio_band` | Airtime TX % |
 | `ruckus_radio_airtime_total_percent` | `ap_mac`, `ap_name`, `radio_band` | Total airtime utilization %, which the controller reports as `busy + rx + tx` |
+
+> **Note on airtime metrics:** The controller reports these as raw counters accumulated over `rf-samples` sampling intervals, not whole percentages — the exporter divides by `rf-samples` to recover the percentage shown in the Unleashed UI. This divisor varies by AP model/firmware (an R670 reports `1`, an R850 reports `11`). A radio with no `rf-samples` value — e.g. on a disconnected AP — has all four airtime metrics omitted entirely for that scrape rather than published as `0`.
 | `ruckus_radio_tx_bytes_total` | `ap_mac`, `ap_name`, `radio_band` | Total cumulative radio TX bytes |
 | `ruckus_radio_rx_bytes_total` | `ap_mac`, `ap_name`, `radio_band` | Total cumulative radio RX bytes |
 | `ruckus_radio_tx_retries_total` | `ap_mac`, `ap_name`, `radio_band` | TX retries |
@@ -223,4 +225,5 @@ A pre-built dashboard is available at [`dashboards/ruckus-unleashed.json`](dashb
 ## Tested On
 
 - Ruckus R850, Unleashed 200.18.7.101.244
+- Ruckus R670, Unleashed 200.19.7.11.283
 
