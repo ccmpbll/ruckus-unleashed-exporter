@@ -270,7 +270,8 @@
       "targets": [
         {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_channel_utilization_percent", "legendFormat": "{{radio_band}} Busy", "refId": "A"},
         {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_airtime_tx_percent", "legendFormat": "{{radio_band}} TX Airtime", "refId": "B"},
-        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_airtime_rx_percent", "legendFormat": "{{radio_band}} RX Airtime", "refId": "C"}
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_airtime_rx_percent", "legendFormat": "{{radio_band}} RX Airtime", "refId": "C"},
+        {"datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}, "expr": "ruckus_radio_airtime_total_percent", "legendFormat": "{{radio_band}} Total", "refId": "D"}
       ]
     },
 
