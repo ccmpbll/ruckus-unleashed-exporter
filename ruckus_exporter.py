@@ -23,6 +23,9 @@ Environment Variables:
 
 Endpoints:
   /metrics          - Prometheus metrics, on EXPORTER_PORT
+  /events           - Recent alarms, grouped events and rogue summary (JSON), on
+                      EXPORTER_PORT. ?hours=N (1-168, default 24). Fetched on demand,
+                      not during a /metrics scrape
   /debug            - Raw API response data from the last scrape (JSON), on the
                       separate DEBUG_BIND:DEBUG_PORT listener
 """
@@ -37,6 +40,7 @@ import time
 
 from aiohttp import web
 from aioruckus import AjaxSession, SystemStat
+from events_summary import summarize_events
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -593,6 +597,37 @@ async def debug_handler(request):
     )
 
 
+ALARM_LIMIT = 100
+EVENT_LIMIT = 300
+
+
+async def _fetch_events():
+    async with AjaxSession.async_create(RUCKUS_HOST, RUCKUS_USER, RUCKUS_PASS) as session:
+        alarms = await session.api.get_alarms(limit=ALARM_LIMIT)
+        events = await session.api.get_events(limit=EVENT_LIMIT)
+        rogues = await session.api.get_active_rogues()
+    return alarms, events, rogues
+
+
+async def events_handler(request):
+    try:
+        hours = max(1, min(168, int(request.query.get("hours", "24"))))
+    except ValueError:
+        return web.json_response({"error": "hours must be an integer"}, status=400)
+    try:
+        # Same lock as /metrics: Unleashed limits concurrent admin sessions.
+        # get_alarms/get_events/get_active_rogues take no per-request timeout
+        # (unlike the getters used for /metrics), so bound the whole fetch.
+        async with _scrape_lock:
+            alarms, events, rogues = await asyncio.wait_for(_fetch_events(), timeout=AJAX_TIMEOUT * 6)
+    except Exception as e:
+        log.error("Events fetch failed: %s", e, exc_info=True)
+        return web.json_response({"error": "events fetch failed"}, status=502)
+    return web.json_response(
+        summarize_events(alarms, events, rogues, now=time.time(), hours=hours, event_limit=EVENT_LIMIT)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -608,6 +643,7 @@ async def main():
 
     app = web.Application()
     app.router.add_get("/metrics", metrics_handler)
+    app.router.add_get("/events", events_handler)
 
     runner = web.AppRunner(app)
     await runner.setup()
