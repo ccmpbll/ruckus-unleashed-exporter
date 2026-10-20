@@ -52,7 +52,10 @@ scrape_configs:
 | Endpoint | Listener | Description |
 |---|---|---|
 | `/metrics` | `0.0.0.0:9785` | Prometheus metrics |
+| `/events` | `0.0.0.0:9785` | Recent alarms, events grouped by type (count, severity, latest, example text, top clients) and a rogue-AP summary (JSON). `?hours=N`, 1–168, default 24. Fetched from the controller on demand, never during a `/metrics` scrape, so it adds no scrape time. Intended for log-style consumers (dashboards, automation); the event text is not a Prometheus metric. |
 | `/debug` | `127.0.0.1:9786` | Raw API response data from the last scrape (JSON). Sensitive fields (`wpa-passphrase`, `preSharedKey`, `psk`) are redacted. |
+
+`/events` shares the `/metrics` listener, so it is as reachable as your metrics are. It returns AP names, client MACs and the SSIDs of open rogue networks, but no passphrases or keys. Firewall or proxy the port if that matters on your network.
 
 `/debug` runs on its own listener bound to loopback, so it is reachable only from inside the container's network namespace. Docker publishes ports to the container's bridge address rather than its loopback, which means even `-p 9786:9786` will not reach it. To read it, exec into the container:
 

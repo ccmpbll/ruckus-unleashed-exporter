@@ -26,7 +26,7 @@ RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin expo
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ruckus_exporter.py .
+COPY ruckus_exporter.py events_summary.py ./
 
 # Pre-build the bytecode cache as root, because /app stays root-owned and the
 # exporter user cannot write __pycache__ at import time
