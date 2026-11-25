@@ -40,6 +40,7 @@ import time
 
 from aiohttp import web
 from aioruckus import AjaxSession, SystemStat
+from events_metrics import EventCounters, active_alarms
 from events_summary import summarize_events
 from prometheus_client import (
     CollectorRegistry,
@@ -48,6 +49,7 @@ from prometheus_client import (
     generate_latest,
     CONTENT_TYPE_LATEST,
 )
+from prometheus_client.core import CounterMetricFamily
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -83,6 +85,29 @@ _debug_data: dict = {}
 # keep this denylist for the bare fields it can't recognize
 _CLIENT_REDACT = {"wpa-passphrase"}
 _AP_REDACT = {"preSharedKey", "psk"}
+
+
+# ---------------------------------------------------------------------------
+# Event counters (kept across scrapes; see events_metrics.py)
+# ---------------------------------------------------------------------------
+ALARM_LIMIT = 100
+EVENT_LIMIT = 300
+_event_counters = EventCounters()
+
+
+class _EventCounterCollector:
+    def collect(self):
+        ev = CounterMetricFamily("ruckus_events", "Controller events by type, counted since exporter start",
+                                 labels=["code"])
+        for code, n in _event_counters.events.items():
+            ev.add_metric([code], n)
+        yield ev
+        af = CounterMetricFamily("ruckus_client_auth_failures",
+                                 "Client auth/association failure events, counted since exporter start; "
+                                 "clients unseen for 7 days are dropped", labels=["client"])
+        for mac, n in _event_counters.auth_failures.items():
+            af.add_metric([mac], n)
+        yield af
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +308,13 @@ async def collect_metrics() -> bytes:
                              ["ap_mac", "ssid", "radio_band"], registry=registry)
     vap_rx_drop_pkts = Gauge("ruckus_vap_rx_drop_packets_total", "Cumulative RX drop packet count on this VAP",
                              ["ap_mac", "ssid", "radio_band"], registry=registry)
+    alarm_active = Gauge("ruckus_alarm_active",
+                         "1 per controller alarm raised in the last 24h (Unleashed alarms have no cleared state)",
+                         ["code", "severity", "ap"], registry=registry)
+    # Counts live in the process, so expose them even when this scrape's fetch fails
+    _event_counters.settle(now=time.time())
+    registry.register(_EventCounterCollector())
+
     vap_status = Gauge("ruckus_vap_status", "VAP operational status (1=Up, 0=Down)",
                        ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry)
 
@@ -564,6 +596,26 @@ async def collect_metrics() -> bytes:
             except Exception as e:
                 log.error("Error collecting VAP stats: %s", e)
 
+            # -----------------------------------------------------------
+            # Alarms and events (same data as /events, as series)
+            # -----------------------------------------------------------
+            # These getters take no per-request timeout, so bound them here.
+            # Run side by side so they add one AJAX_TIMEOUT to a slow scrape, not two.
+            alarms, events = await asyncio.gather(
+                asyncio.wait_for(api.get_alarms(limit=ALARM_LIMIT), timeout=AJAX_TIMEOUT),
+                asyncio.wait_for(api.get_events(limit=EVENT_LIMIT), timeout=AJAX_TIMEOUT),
+                return_exceptions=True,
+            )
+            if isinstance(alarms, BaseException):
+                log.error("Error collecting alarms: %s", alarms)
+            else:
+                for (code, sev, ap), v in active_alarms(alarms, now=now_ts).items():
+                    alarm_active.labels(code=code, severity=sev, ap=ap).set(v)
+            if isinstance(events, BaseException):
+                log.error("Error collecting events: %s", events)
+            else:
+                _event_counters.update(events, now=now_ts, limit=EVENT_LIMIT)
+
         scrape_success.set(1)
 
     except Exception as e:
@@ -595,10 +647,6 @@ async def debug_handler(request):
         text=json.dumps(_debug_data, indent=2, default=str),
         content_type="application/json",
     )
-
-
-ALARM_LIMIT = 100
-EVENT_LIMIT = 300
 
 
 async def _fetch_events():

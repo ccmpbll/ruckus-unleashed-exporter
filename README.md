@@ -52,7 +52,7 @@ scrape_configs:
 | Endpoint | Listener | Description |
 |---|---|---|
 | `/metrics` | `0.0.0.0:9785` | Prometheus metrics |
-| `/events` | `0.0.0.0:9785` | Recent alarms, events grouped by type (count, severity, latest, example text, top clients) and a rogue-AP summary (JSON). `?hours=N`, 1–168, default 24. Fetched from the controller on demand, never during a `/metrics` scrape, so it adds no scrape time. Intended for log-style consumers (dashboards, automation); the event text is not a Prometheus metric. |
+| `/events` | `0.0.0.0:9785` | Recent alarms, events grouped by type (count, severity, latest, example text, top clients) and a rogue-AP summary (JSON). `?hours=N`, 1–168, default 24. Fetched from the controller on demand, never during a `/metrics` scrape, so it adds no scrape time. Intended for log-style consumers (dashboards, automation); event text stays here, counts and active alarms are also on `/metrics` (see [Alarms and Events](#alarms-and-events)). |
 | `/debug` | `127.0.0.1:9786` | Raw API response data from the last scrape (JSON). Sensitive fields (`wpa-passphrase`, `preSharedKey`, `psk`) are redacted. |
 
 `/events` shares the `/metrics` listener, so it is as reachable as your metrics are. It returns AP names, client MACs and the SSIDs of open rogue networks, but no passphrases or keys. Firewall or proxy the port if that matters on your network.
@@ -150,6 +150,18 @@ If you would rather expose it, set `DEBUG_BIND=0.0.0.0` and publish `DEBUG_PORT`
 | `ruckus_vap_tx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative TX data drop packet count |
 | `ruckus_vap_rx_drop_packets_total` | `ap_mac`, `ssid`, `radio_band` | Cumulative RX drop packet count |
 | `ruckus_vap_status` | `ap_mac`, `ssid`, `radio_band`, `bssid` | VAP operational status (1=Up, 0=Down) |
+
+### Alarms and Events
+
+The same controller data `/events` returns, fetched on every `/metrics` scrape (two extra AJAX calls, run side by side and bounded by `AJAX_TIMEOUT`, so a slow controller adds at most one `AJAX_TIMEOUT` to the scrape).
+
+| Metric | Labels | Description |
+|---|---|---|
+| `ruckus_alarm_active` | `code`, `severity`, `ap` | 1 per controller alarm raised in the last 24h. Unleashed alarms have no cleared state, so "active" means recent. `code` is the alarm name (e.g. `AP Lost Contact`) |
+| `ruckus_events_total` | `code` | Counter of controller events by type (`MSG_...` code: AP reboot, lost heartbeat, DFS/radar, firmware, ...) |
+| `ruckus_client_auth_failures_total` | `client` | Counter of auth/association failure events (codes matching `auth...fail` / `assoc...fail`) per client MAC. Clients with no failure in 7 days are dropped |
+
+> **How the counters count:** the controller only returns its newest 300 events, so counts are kept in the exporter process and each event is counted once. The first fetch after start-up is a baseline (history is not counted), so an exporter restart does not look like a burst of events, and the counters reset with the process — use `increase()`. A new `code` or `client` series is held at 0 for 150s (2.5 scrapes at 60s) before its count lands, so `increase()` sees the first event too, even if one scrape fails or something else reads `/metrics` in between. With a `scrape_interval` above 60s, raise `PENDING_SECONDS` in `events_metrics.py`. If more than 300 events arrive between two scrapes, the extra ones are missed.
 
 ## Grafana Dashboard
 
