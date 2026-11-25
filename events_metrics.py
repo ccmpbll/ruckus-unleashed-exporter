@@ -13,6 +13,7 @@ fetch. Prometheus' increase() cannot see the jump from "no series" to 1, so
 without this the first event of every new code or client would be lost.
 """
 import re
+from collections import Counter
 
 ALARM_ACTIVE_HOURS = 24
 CLIENT_TTL = 7 * 86400
@@ -53,7 +54,7 @@ class EventCounters:
         self._client_seen = {}   # mac -> last event time
         self._pending_events = {}
         self._pending_auth = {}
-        self._seen = set()
+        self._seen = Counter()
         self._baselined = False
 
     @staticmethod
@@ -71,10 +72,14 @@ class EventCounters:
                 counts[label] += n
             pending.clear()
 
-        keys = {_key(e) for e in events}
+        # Counter, not set: two identical events in one second are two events.
+        keys = Counter(_key(e) for e in events)
         if self._baselined:
+            room = self._seen.copy()
             for e in events:
-                if _key(e) in self._seen:
+                k = _key(e)
+                if room[k] > 0:
+                    room[k] -= 1
                     continue
                 code = str(e.get("msg") or "unknown")
                 self._add(self.events, self._pending_events, code)

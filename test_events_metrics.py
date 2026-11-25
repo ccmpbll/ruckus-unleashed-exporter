@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Offline test for events_metrics (stdlib only).
+"""Offline test for events_metrics (stdlib; the /metrics wiring test also needs requirements.txt, else it skips).
 
 Usage: python3 test_events_metrics.py
 """
+import asyncio
+import os
+import time
+
 from events_metrics import CLIENT_TTL, EventCounters, active_alarms
 
 NOW = 1_800_000_000
@@ -63,6 +67,61 @@ def test_stale_clients_dropped():
     c.update([], now=NOW + CLIENT_TTL + 1)
     assert c.auth_failures == {}
     assert c.events == {"MSG_client_repeat_auth_fail": 1}  # per-code counter stays
+
+
+def test_identical_events_in_one_batch_both_count():
+    c = EventCounters()
+    c.update([], now=NOW)
+    same = [ev(NOW, "MSG_client_repeat_auth_fail", mac="aa")] * 2
+    c.update(same, now=NOW)
+    c.update(same, now=NOW + 60)  # same two again: no recount
+    assert c.auth_failures == {"aa": 2}
+    c.update(same + same[:1], now=NOW + 120)  # a third identical one arrives
+    assert c.auth_failures == {"aa": 3}
+
+
+def test_metrics_keep_event_counters_when_alarms_fail():
+    """Wiring: needs aiohttp/aioruckus/prometheus_client (the Docker image has them)."""
+    try:
+        os.environ.setdefault("RUCKUS_HOST", "x")
+        import ruckus_exporter as r
+    except ImportError:
+        print("skip test_metrics_keep_event_counters_when_alarms_fail (deps missing)")
+        return
+    t = int(time.time())
+    batches = [[], [ev(t, "MSG_AP_rebooted")], [ev(t, "MSG_AP_rebooted")]]
+
+    class Api:
+        async def get_alarms(self, limit):
+            raise RuntimeError("no alarms API")
+
+        async def get_events(self, limit):
+            return batches.pop(0)
+
+        def __getattr__(self, name):
+            async def empty(*a, **k):
+                return {} if name == "get_system_info" else []
+            return empty
+
+    class Session:
+        api = Api()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            pass
+
+    real = r.AjaxSession.async_create
+    r.AjaxSession.async_create = staticmethod(lambda *a, **k: Session())
+    r._event_counters = EventCounters()
+    try:
+        for _ in range(3):
+            out = asyncio.run(r.collect_metrics()).decode()
+    finally:
+        r.AjaxSession.async_create = real
+    assert 'ruckus_events_total{code="MSG_AP_rebooted"} 1.0' in out, out
+    assert "ruckus_alarm_active{" not in out
 
 
 if __name__ == "__main__":

@@ -311,6 +311,8 @@ async def collect_metrics() -> bytes:
     alarm_active = Gauge("ruckus_alarm_active",
                          "1 per controller alarm raised in the last 24h (Unleashed alarms have no cleared state)",
                          ["code", "severity", "ap"], registry=registry)
+    # Counts live in the process, so expose them even when this scrape's fetch fails
+    registry.register(_EventCounterCollector())
 
     vap_status = Gauge("ruckus_vap_status", "VAP operational status (1=Up, 0=Down)",
                        ["ap_mac", "ssid", "radio_band", "bssid"], registry=registry)
@@ -596,16 +598,18 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             # Alarms and events (same data as /events, as series)
             # -----------------------------------------------------------
+            # These getters take no per-request timeout, so bound them here
             try:
-                # These getters take no per-request timeout, so bound them here
                 alarms = await asyncio.wait_for(api.get_alarms(limit=ALARM_LIMIT), timeout=AJAX_TIMEOUT)
-                events = await asyncio.wait_for(api.get_events(limit=EVENT_LIMIT), timeout=AJAX_TIMEOUT)
-                _event_counters.update(events, now=now_ts)
                 for (code, sev, ap), v in active_alarms(alarms, now=now_ts).items():
                     alarm_active.labels(code=code, severity=sev, ap=ap).set(v)
-                registry.register(_EventCounterCollector())
             except Exception as e:
-                log.error("Error collecting alarms/events: %s", e)
+                log.error("Error collecting alarms: %s", e)
+            try:
+                events = await asyncio.wait_for(api.get_events(limit=EVENT_LIMIT), timeout=AJAX_TIMEOUT)
+                _event_counters.update(events, now=now_ts)
+            except Exception as e:
+                log.error("Error collecting events: %s", e)
 
         scrape_success.set(1)
 
