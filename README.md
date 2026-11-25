@@ -153,7 +153,7 @@ If you would rather expose it, set `DEBUG_BIND=0.0.0.0` and publish `DEBUG_PORT`
 
 ### Alarms and Events
 
-The same controller data `/events` returns, fetched on every `/metrics` scrape (two extra AJAX calls, each bounded by `AJAX_TIMEOUT`).
+The same controller data `/events` returns, fetched on every `/metrics` scrape (two extra AJAX calls, run side by side and bounded by `AJAX_TIMEOUT`, so a slow controller adds at most one `AJAX_TIMEOUT` to the scrape).
 
 | Metric | Labels | Description |
 |---|---|---|
@@ -161,7 +161,7 @@ The same controller data `/events` returns, fetched on every `/metrics` scrape (
 | `ruckus_events_total` | `code` | Counter of controller events by type (`MSG_...` code: AP reboot, lost heartbeat, DFS/radar, firmware, ...) |
 | `ruckus_client_auth_failures_total` | `client` | Counter of auth/association failure events (codes matching `auth...fail` / `assoc...fail`) per client MAC. Clients with no failure in 7 days are dropped |
 
-> **How the counters count:** the controller only returns its newest 300 events, so counts are kept in the exporter process and each event is counted once. The first fetch after start-up is a baseline (history is not counted), so an exporter restart does not look like a burst of events, and the counters reset with the process — use `increase()`. A new `code` or `client` series first appears at 0 and its count lands one scrape later, so `increase()` sees the first event too. If more than 300 events arrive between two scrapes, the extra ones are missed.
+> **How the counters count:** the controller only returns its newest 300 events, so counts are kept in the exporter process and each event is counted once. The first fetch after start-up is a baseline (history is not counted), so an exporter restart does not look like a burst of events, and the counters reset with the process — use `increase()`. A new `code` or `client` series is held at 0 for 150s (2.5 scrapes at 60s) before its count lands, so `increase()` sees the first event too, even if one scrape fails or something else reads `/metrics` in between. With a `scrape_interval` above 60s, raise `PENDING_SECONDS` in `events_metrics.py`. If more than 300 events arrive between two scrapes, the extra ones are missed.
 
 ## Grafana Dashboard
 

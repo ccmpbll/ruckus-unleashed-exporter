@@ -312,6 +312,7 @@ async def collect_metrics() -> bytes:
                          "1 per controller alarm raised in the last 24h (Unleashed alarms have no cleared state)",
                          ["code", "severity", "ap"], registry=registry)
     # Counts live in the process, so expose them even when this scrape's fetch fails
+    _event_counters.settle(now=time.time())
     registry.register(_EventCounterCollector())
 
     vap_status = Gauge("ruckus_vap_status", "VAP operational status (1=Up, 0=Down)",
@@ -598,18 +599,22 @@ async def collect_metrics() -> bytes:
             # -----------------------------------------------------------
             # Alarms and events (same data as /events, as series)
             # -----------------------------------------------------------
-            # These getters take no per-request timeout, so bound them here
-            try:
-                alarms = await asyncio.wait_for(api.get_alarms(limit=ALARM_LIMIT), timeout=AJAX_TIMEOUT)
+            # These getters take no per-request timeout, so bound them here.
+            # Run side by side so they add one AJAX_TIMEOUT to a slow scrape, not two.
+            alarms, events = await asyncio.gather(
+                asyncio.wait_for(api.get_alarms(limit=ALARM_LIMIT), timeout=AJAX_TIMEOUT),
+                asyncio.wait_for(api.get_events(limit=EVENT_LIMIT), timeout=AJAX_TIMEOUT),
+                return_exceptions=True,
+            )
+            if isinstance(alarms, BaseException):
+                log.error("Error collecting alarms: %s", alarms)
+            else:
                 for (code, sev, ap), v in active_alarms(alarms, now=now_ts).items():
                     alarm_active.labels(code=code, severity=sev, ap=ap).set(v)
-            except Exception as e:
-                log.error("Error collecting alarms: %s", e)
-            try:
-                events = await asyncio.wait_for(api.get_events(limit=EVENT_LIMIT), timeout=AJAX_TIMEOUT)
-                _event_counters.update(events, now=now_ts)
-            except Exception as e:
-                log.error("Error collecting events: %s", e)
+            if isinstance(events, BaseException):
+                log.error("Error collecting events: %s", events)
+            else:
+                _event_counters.update(events, now=now_ts, limit=EVENT_LIMIT)
 
         scrape_success.set(1)
 
@@ -642,7 +647,6 @@ async def debug_handler(request):
         text=json.dumps(_debug_data, indent=2, default=str),
         content_type="application/json",
     )
-
 
 
 async def _fetch_events():
